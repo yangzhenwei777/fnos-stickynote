@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh-CN">
+	<head>
+		<meta charset="UTF-8" />
+		<title>Sticky note · P0-A 接线验证页</title>
+		<style>
+			body { font-family: system-ui, sans-serif; background: #1e1e2e; color: #cdd6f4; margin: 0; padding: 24px }
+			h2 { margin-top: 0 }
+			section { margin: 14px 0; padding: 12px; background: #181825; border-radius: 8px }
+			button { margin: 4px; padding: 6px 14px; border-radius: 6px; border: 1px solid #45475a; background: #313244; color: inherit; cursor: pointer }
+			pre { white-space: pre-wrap; font-size: 12px; max-height: 26vh; overflow: auto; background: #11111b; padding: 8px; border-radius: 6px }
+			img.preview { max-width: 64px; border: 1px solid #45475a; border-radius: 4px }
+		</style>
+	</head>
+	<body>
+		<h2>P0-A 接线验证（真实 Vue 将以 VITE_DESKTOP=1 替换本页 · §120）</h2>
+
+		<section>
+			<b>笔记 CRUD + 搜索</b><br />
+			<button id="create">CreateNote</button>
+			<button id="list">ListNotes</button>
+			<button id="search">Search "接线"</button>
+			<button id="update">UpdateNote(CAS v→v+1)</button>
+			<button id="stale">UpdateNote(错误 base → 期望 VERSION_CONFLICT)</button>
+		</section>
+
+		<section>
+			<b>Folder</b><br />
+			<button id="fcreate">CreateFolder</button>
+			<button id="flist">ListFolders(含虚拟默认)</button>
+		</section>
+
+		<section>
+			<b>加密往返</b><br />
+			<button id="enc">EncryptNote("pw123")</button>
+			<button id="verify">VerifyEncrypt(错密码→WRONG_PASSWORD)</button>
+			<button id="dec">DecryptNote(还原明文)</button>
+		</section>
+
+		<section>
+			<b>Upload + /uploads overlay</b><br />
+			<button id="up">UploadBytes(1x1 png)</button>
+			<button id="upbad">UploadBytes(伪装 png 文本 → 期望 FILE_TYPE_REJECTED)</button>
+			<span id="shot"></span>
+		</section>
+
+		<pre id="out">—</pre>
+		<script>
+			const out = (v) => (document.getElementById('out').textContent = typeof v === 'string' ? v : JSON.stringify(v, null, 2))
+			const svc = () => window.go.main.LocalService
+			let lastNote = null, lastVersion = null
+			const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+			const b64bytes = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0))
+			const wrap = (fn) => async () => { try { out(await fn()) } catch (e) { out('ERR: ' + (e.message || e)) } }
+			const $ = (id) => document.getElementById(id)
+
+			$('create').onclick = wrap(async () => { lastNote = await svc().CreateNote('接线笔记', '<p>hello desktop</p>', 'P0A', null); lastVersion = lastNote.version; return lastNote })
+			$('list').onclick = wrap(async () => svc().ListNotes(1, 10, '', null))
+			$('search').onclick = wrap(async () => svc().ListNotes(1, 10, '接线', '', 'updated_at', null))
+			$('update').onclick = wrap(async () => { const n = await svc().UpdateNote(lastNote.id, '接线笔记2', '<p>edited</p>', '', lastVersion); lastVersion = n.version; return n })
+			$('stale').onclick = wrap(async () => svc().UpdateNote(lastNote.id, 'x', '', '', 999))
+			$('fcreate').onclick = wrap(async () => svc().CreateFolder('桌面夹'))
+			$('flist').onclick = wrap(async () => svc().ListFolders())
+			$('enc').onclick = wrap(async () => { await svc().EncryptNote(lastNote.id, 'pw123', 'pw123'); return 'encrypted' })
+			$('verify').onclick = wrap(async () => svc().VerifyEncrypt(lastNote.id, 'wrong-pw'))
+			$('dec').onclick = wrap(async () => ({ plaintext: await svc().DecryptNote(lastNote.id, 'pw123') }))
+			$('up').onclick = wrap(async () => {
+				const r = await svc().UploadBytes('px.png', b64bytes(PNG))
+				$('shot').innerHTML = `<img class="preview" src="${r.url}" onload="this.title='overlay 直读成功'" onerror="this.alt='加载失败'">`
+				return r
+			})
+			$('upbad').onclick = wrap(async () => svc().UploadBytes('fake.png', Array.from(new TextEncoder().encode('plain text not png'))))
+		</script>
+	</body>
+</html>

@@ -1,0 +1,127 @@
+#!/bin/bash
+
+### 升级前钩子（v21.90 P0，N-02/M-04 审计核对修复）：
+### 在旧版本仍在运行、旧数据库尚未被触碰时，做升级前灾备快照。
+###
+### 背景：此前备份逻辑放在 upgrade_callback（升级完成后执行），注释却写"升级前自动备份"——
+### 时序错误导致备份无法保护"升级过程破坏数据库/迁移失败/新版本启动异常"等场景，
+### 审计报告 N-02/M-04 指出后本次修复：备份职责整体前移至 upgrade_init。
+###
+### 备份内容（对比 v21.89 只备 DB 的缺口，M-04）：
+###   1. data/notepad.db（SQLite 主库）
+###   2. data/notepad.db-wal / -shm（WAL 边车文件，直接 cp 主库不带它们会丢最近事务）
+###   3. upload/（用户附件，升级不应丢）
+###   4. .jwt_secret（丢失会导致重启后全部 token 失效、用户被强制下线）
+###
+### 校验：备份后尝试 sqlite3 PRAGMA integrity_check（VM 上有 sqlite3 时）；
+### 失败行为：备份成功 → exit 0 继续升级；任何失败 → exit 1 阻断升级（v21.90 语义变更，
+### 此前"备份失败不影响升级"使备份形同虚设，审计明确要求成为安全门禁）。
+
+DB_FILE="${TRIM_PKGVAR}/data/notepad.db"
+
+if [ ! -f "${DB_FILE}" ]; then
+  echo "数据库文件不存在（全新安装），跳过备份"
+  exit 0
+fi
+
+# 备份目标：取第一个共享存储目录（与卸载备份同策略）
+SHARE_ROOT="$(echo "${TRIM_DATA_SHARE_PATHS}" | cut -d: -f1)"
+if [ -z "${SHARE_ROOT}" ] || [ ! -d "${SHARE_ROOT}" ]; then
+  echo "错误：未找到可用的共享存储目录，无法做升级前备份（阻断升级）" >&2
+  exit 1
+fi
+
+# v21.58 P6 沿用：mktemp -d 安全创建唯一目录（防预测目录名 symlink/race）；
+# v21.52 P14 沿用：备份含用户笔记与账户数据，目录 700 / 文件 600。
+umask 077
+BACKUP_DIR="$(mktemp -d "${SHARE_ROOT}/sticky-note-upgrade-backup.XXXXXX")" || {
+  echo "错误：创建安全备份目录失败（阻断升级）" >&2
+  exit 1
+}
+chmod 700 "${BACKUP_DIR}"
+
+# 1. 数据库一致性快照（v21.93 P1：R-05 / P1-1 审计核对）
+#
+# 此前做法：对**仍在运行**的 SQLite 连续 cp 三个文件（db / db-wal / db-shm）。
+# 三次 cp 之间应用仍可能写入，得到的三个文件未必属于同一时刻——
+# 而随后的 integrity_check 只查 db 单文件，查不出与 WAL 的不一致，
+# 于是「校验通过」的备份在回滚时可能是一份撕裂副本。
+#
+# 现在优先使用 sqlite3 在线备份（.backup）：由 SQLite 自身事务语义拷贝，
+# 产出包含已提交但未 checkpoint 的 WAL 内容的**单文件一致性快照**，
+# 且无需停止应用。无 sqlite3 CLI 时优先调用应用自身 backup-db 子命令
+# （v21.95 H-03'：VACUUM INTO 等价 .backup，纯 Go 无外部依赖），
+# 最后才回退文件拷贝并显式告警（不引入硬依赖）。
+if command -v sqlite3 >/dev/null 2>&1; then
+  sqlite3 "${DB_FILE}" ".backup '${BACKUP_DIR}/notepad.db'" || {
+    rm -rf -- "${BACKUP_DIR}"
+    echo "错误：数据库备份失败（阻断升级）" >&2
+    exit 1
+  }
+  chmod 600 "${BACKUP_DIR}/notepad.db"
+elif [ -x "${TRIM_APPDEST}/server/sticky-note" ]; then
+  # H-03'：应用自身一致性快照（VACUUM INTO，与 .backup 等价，含 WAL 已提交内容）。
+  # 显式传源库路径：backup-db 默认打开 config.Load 的 DBPath（相对 cwd ./data/），
+  # 而升级场景库在 ${TRIM_PKGVAR}/data/ 下——不传会备份成空库（v21.95 真机复现）。
+  "${TRIM_APPDEST}/server/sticky-note" backup-db "${BACKUP_DIR}/notepad.db" "${DB_FILE}" || {
+    rm -rf -- "${BACKUP_DIR}"
+    echo "错误：数据库备份失败（backup-db 子命令，阻断升级）" >&2
+    exit 1
+  }
+  chmod 600 "${BACKUP_DIR}/notepad.db"
+else
+  # ⚠️ 兜底文件拷贝（v21.97 审计 L-01 评估后**刻意保留**）：
+  #   触发条件 = sqlite3 与应用二进制**均不可用**（极端损坏场景）。
+  #   理论一致性风险（三次 cp 非原子快照）存在，但**移除该 fallback 会引入更坏结果**：
+  #   备份完全不可能时升级会被阻断，且旧库可能正在被损坏进程写入。
+  #   折中：备份失败仍阻断升级（fail-closed），拷贝后下方 integrity_check 尽力校验。
+  echo "警告：无 sqlite3 且应用不可执行，回退文件拷贝备份（一致性弱于在线快照）" >&2
+  cp -- "${DB_FILE}" "${BACKUP_DIR}/notepad.db" || {
+    rm -rf -- "${BACKUP_DIR}"
+    echo "错误：数据库备份失败（阻断升级）" >&2
+    exit 1
+  }
+  chmod 600 "${BACKUP_DIR}/notepad.db"
+  [ -f "${DB_FILE}-wal" ] && cp -- "${DB_FILE}-wal" "${BACKUP_DIR}/notepad.db-wal" && chmod 600 "${BACKUP_DIR}/notepad.db-wal"
+  [ -f "${DB_FILE}-shm" ] && cp -- "${DB_FILE}-shm" "${BACKUP_DIR}/notepad.db-shm" && chmod 600 "${BACKUP_DIR}/notepad.db-shm"
+fi
+
+# 2. 附件目录（存在时整目录拷贝）
+if [ -d "${TRIM_PKGVAR}/upload" ]; then
+  cp -r -- "${TRIM_PKGVAR}/upload" "${BACKUP_DIR}/upload" || {
+    rm -rf -- "${BACKUP_DIR}"
+    echo "错误：附件目录备份失败（阻断升级）" >&2
+    exit 1
+  }
+  chmod 700 "${BACKUP_DIR}/upload"
+fi
+
+# 3. JWT 密钥（存在时备份）。GPT-13（审计）/ v21.133：复制失败 fail-closed 阻断升级——
+#    升级灾备的意义就是可完整回滚；缺 .jwt_secret 的备份会导致恢复后全部会话与 2FA
+#    （TOTP 密钥绑定 .jwt_secret）永久失效，等同不完整备份，故与 DB/附件备份同口径阻断。
+#    文件不存在则跳过（env 部署 / 首启尚未生成密钥，属合法情况）。
+if [ -f "${TRIM_PKGVAR}/data/.jwt_secret" ]; then
+  if cp -- "${TRIM_PKGVAR}/data/.jwt_secret" "${BACKUP_DIR}/.jwt_secret" && chmod 600 "${BACKUP_DIR}/.jwt_secret"; then
+    :
+  else
+    rm -rf -- "${BACKUP_DIR}"
+    echo "错误：.jwt_secret 备份失败（阻断升级，避免留下无法恢复 2FA/会话的不完整灾备）" >&2
+    exit 1
+  fi
+fi
+
+# 4. 一致性校验：VM 有 sqlite3 时对备份副本做 integrity_check（应用运行中直接查主库会锁库，查副本安全）
+if command -v sqlite3 >/dev/null 2>&1; then
+  RESULT="$(sqlite3 "${BACKUP_DIR}/notepad.db" "PRAGMA integrity_check;" 2>/dev/null)"
+  if [ "${RESULT}" != "ok" ]; then
+    rm -rf -- "${BACKUP_DIR}"
+    echo "错误：备份数据库完整性校验失败（${RESULT}），阻断升级" >&2
+    exit 1
+  fi
+fi
+
+# 5. 只保留最近 3 份备份，防共享目录被备份文件撑爆
+ls -1dt "${SHARE_ROOT}"/sticky-note-upgrade-backup.* 2>/dev/null | tail -n +4 | xargs -r rm -rf --
+
+echo "升级前备份完成：${BACKUP_DIR}（DB+WAL+upload+.jwt_secret，目录 700/文件 600）"
+exit 0

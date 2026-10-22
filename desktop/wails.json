@@ -1,0 +1,19 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "stickynote-desktop",
+  "outputfilename": "sticky-note-desktop",
+  "frontend:install": "",
+  "frontend:build": "",
+  "frontend:dev:watcher": "",
+  "frontend:dev:serverUrl": "auto",
+  "author": {
+    "name": "Davy"
+  },
+  "info": {
+    "companyName": "Sticky note",
+    "productName": "Sticky note Desktop",
+    "productVersion": "2.2.0",
+    "copyright": "Copyright 2026 Davy",
+    "comments": "P0-A 骨架验证壳：LocalTransport/真实前端接线在后续切片（离线方案 v20-Project）"
+  }
+}

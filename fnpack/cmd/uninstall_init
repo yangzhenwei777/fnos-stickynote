@@ -1,0 +1,80 @@
+#!/bin/bash
+
+### 卸载前钩子：按用户选择删除数据
+### fnOS 1.2+ TRIM_PKGVAR 直接指向真实数据目录（如 /vol1/@appdata/stickynote，非软链）
+### v21.52 P4 审计修复：精确白名单（/vol[0-9]*/@appdata/stickynote）+ realpath 解析 +
+### basename 校验，拒绝路径穿越（/notepad/../xxx）与模糊前缀匹配。
+
+DEBUG_LOG="${TRIM_PKGVAR}/logs/uninstall_debug.log"
+umask 077
+mkdir -p "$(dirname "${DEBUG_LOG}")" 2>/dev/null || true
+
+echo "[$(date "+%Y-%m-%d %H:%M:%S")] === uninstall_init start ===" > "${DEBUG_LOG}"
+echo "wizard_data_action=[${wizard_data_action}]" >> "${DEBUG_LOG}"
+echo "TRIM_PKGVAR=[${TRIM_PKGVAR}]" >> "${DEBUG_LOG}"
+
+delete_choice="no"
+[ "${wizard_data_action}" = "delete" ] && delete_choice="yes"
+[ "${wizard_delete_data}" = "yes" ] || [ "${wizard_delete_data}" = "true" ] && delete_choice="yes"
+echo "delete_choice=${delete_choice}" >> "${DEBUG_LOG}"
+
+if [ "${delete_choice}" = "yes" ]; then
+    # 安全校验（P4 精确白名单）：TRIM_PKGVAR 必须精确匹配 /vol[0-9]*/@appdata/stickynote，
+    # 再用 realpath 解析真实路径、basename 确认目录名为 stickynote，双保险拒绝路径穿越。
+    PKGVAR="${TRIM_PKGVAR}"
+    case "${PKGVAR}" in
+        /vol[0-9]*/@appdata/stickynote)
+            ;;
+        *)
+            echo "SAFETY: 非法应用目录 ${PKGVAR}，拒绝删除" >> "${DEBUG_LOG}"
+            exit 0
+            ;;
+    esac
+
+    REAL_PKGVAR="$(realpath -e -- "${PKGVAR}" 2>/dev/null || true)"
+    if [ -z "${REAL_PKGVAR}" ]; then
+        echo "SAFETY: realpath 解析失败（目录不存在）: ${PKGVAR}" >> "${DEBUG_LOG}"
+        exit 0
+    fi
+    if [ "$(basename "${REAL_PKGVAR}")" != "stickynote" ]; then
+        echo "SAFETY: 解析后目录名异常: ${REAL_PKGVAR}，拒绝删除" >> "${DEBUG_LOG}"
+        exit 0
+    fi
+
+    if [ -d "${REAL_PKGVAR}" ]; then
+        rm -rf -- "${REAL_PKGVAR}"
+        if [ -d "${REAL_PKGVAR}" ]; then
+            echo "init: DELETE FAILED ${REAL_PKGVAR}（目录仍存在）" >> "${DEBUG_LOG}"
+        else
+            echo "init: deleted ${REAL_PKGVAR}" >> "${DEBUG_LOG}"
+        fi
+    else
+        echo "init: ${REAL_PKGVAR} 不存在" >> "${DEBUG_LOG}"
+    fi
+
+    # M-01：升级备份落在 data-share（非 PKGVAR），含全库 + .jwt_secret，卸载删数据须一并清。
+    SHARE_ROOT="$(echo "${TRIM_DATA_SHARE_PATHS}" | cut -d: -f1)"
+    if [ -n "${SHARE_ROOT}" ] && [ -d "${SHARE_ROOT}" ]; then
+        REAL_SHARE="$(realpath -e -- "${SHARE_ROOT}" 2>/dev/null || true)"
+        if [ -n "${REAL_SHARE}" ]; then
+            for bk in "${REAL_SHARE}"/sticky-note-upgrade-backup.*; do
+                [ -e "${bk}" ] || continue
+                rbk="$(realpath -e -- "${bk}" 2>/dev/null || true)"
+                [ -n "${rbk}" ] || continue
+                case "$(basename "${rbk}")" in
+                    sticky-note-upgrade-backup.*)
+                        rm -rf -- "${rbk}" && echo "init: removed upgrade backup ${rbk}" >> "${DEBUG_LOG}"
+                        ;;
+                    *)
+                        echo "init: SKIP non-upgrade-backup path ${rbk}" >> "${DEBUG_LOG}"
+                        ;;
+                esac
+            done
+        fi
+    fi
+else
+    echo "init: 未命中 delete，保留数据" >> "${DEBUG_LOG}"
+fi
+
+echo "=== uninstall_init end ===" >> "${DEBUG_LOG}"
+exit 0

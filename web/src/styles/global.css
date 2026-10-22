@@ -1,0 +1,387 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  --primary-color: #2563eb;
+  --primary-hover: #1d4ed8;
+  --primary-light: #eff5ff;
+  /* v21.207 改版：导航选中/工具栏激活用的浅蓝底，及其上的文字色 */
+  --primary-tint: #e3ecff;
+  --primary-ink: #1d4ed8;
+  --success-color: #10b981;
+  --warning-color: #f59e0b;
+  --danger-color: #dc2626;
+  /* v21.207 改版：冷调石板灰 + 提高文字对比度（白底：primary 17.9 / secondary 7.6 / muted 4.8，均 ≥ AA） */
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  /* v21.168 审计⑤：#64748b 在浅蓝底（导航栏 4.48:1 / 悬停底 4.16:1）略低于 AA 4.5:1，
+     加深到 #5B6B82 后为白底 5.43 / 导航栏 5.11 / 悬停底 4.75 —— 三处全过。*/
+  --text-muted: #5B6B82;
+  --border-color: #e6ecf4;
+  --border-light: #eef2f8;
+  --bg-primary: #ffffff;
+  --bg-secondary: #f6f8fd;
+  --bg-tertiary: #eef2f8;
+  /* 面板不再有阴影；仅下拉/弹窗等浮层使用 --shadow-float 一档 */
+  --card-shadow: none;
+  --card-shadow-lg: none;
+  --shadow-float: 0 6px 20px rgba(15, 23, 42, 0.08);
+  --scroll-thumb: #cbd5e1;
+  --scroll-thumb-hover: #94a3b8;
+  /* v21.164 视觉改版（图1/图2 设计基线）：补齐语义 token。
+     --shadow-panel 面板级阴影统一为 none（分区靠细边框，仅浮层保留轻阴影）；
+     --bg-hover 统一悬停底纹（冷灰蓝，替代各处 --bg-tertiary 的悬停用法）；
+     圆角分级见下方 --radius-xs/sm/md/lg/xl。
+     仅新增变量不改既有变量名，亮暗主题成对维护 */
+  /* v21.209 圆角分级（随元素尺寸递增，整体更小；小元素不会比大元素更「圆」）：
+       xs 2px  微型：高亮标记、色条、进度条
+       sm 4px  ≤32px 的图标按钮/工具栏按钮、标签、徽标、色块、行内代码、复选框
+       md 6px  文字按钮、输入框、导航/列表行、下拉项（≈36–44px 控件）
+       lg 8px  卡片、面板、代码块、图片、弹窗、浮层
+       xl 10px 页面级大容器：登录/注册卡片、管理页容器、移动端编辑卡片
+     圆形头像/圆点用 50%，滚动条滑块、滑块条保持胶囊形。 */
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 10px;
+  --bg-hover: #ebf0f9;
+  --shadow-panel: none;
+  --sidebar-width: 280px;
+  --header-height: 64px;
+  /* v21.207：变量名保留以免破坏引用，值改为实心主色（去渐变） */
+  --header-gradient: #2563eb;
+  --gradient-primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --el-fill-color-blank: #ffffff;
+  --el-bg-color: #ffffff;
+  --el-text-color-primary: #0f172a;
+  --el-text-color-regular: #475569;
+  --el-text-color-secondary: #64748b;
+  --el-text-color-placeholder: #64748b;
+  --el-border-color: #e6ecf4;
+  --el-border-color-light: #e6ecf4;
+  --el-border-color-lighter: #eef2f8;
+  --el-fill-color: #eef2f8;
+  --el-box-shadow: var(--shadow-float);
+  --el-box-shadow-light: var(--shadow-float);
+  /* Element Plus 主色对齐项目蓝（v18.2）：此前全站未设 --el-color-primary，
+     EP 组件（按钮/勾选/分页/弹框确认键）一直是出厂蓝 #409eff，与主题 #2563eb 不一致 */
+  --el-color-primary: #2563eb;
+  --el-color-primary-light-3: #6692f1;
+  --el-color-primary-light-5: #92b1f5;
+  --el-color-primary-light-7: #bed0f9;
+  --el-color-primary-light-8: #d3e0fb;
+  --el-color-primary-light-9: #e9effd;
+  --el-color-primary-dark-2: #1e4fbc;
+  /* v21.211 按钮三色：蓝=确认/主操作，红=删除/高风险，灰=取消/次要。
+     红色统一为 #dc2626（白字 4.83:1），取代 EP 默认 #f56c6c / token #ef4444 / 写死 #F56C6C 三种红 */
+  --el-color-danger: #dc2626;
+  --el-color-danger-light-3: #e66767;
+  --el-color-danger-light-5: #ee9292;
+  --el-color-danger-light-7: #f4bebe;
+  --el-color-danger-light-8: #f8d4d4;
+  --el-color-danger-light-9: #fce9e9;
+  --el-color-danger-dark-2: #b01e1e;
+  /* EP 圆角对齐主题设计语言（v18.3）；v21.209 与五档圆角 token 对齐：
+     base=md（按钮/输入/下拉/提示）、small=sm（复选框等）、弹窗/卡片/气泡卡=lg */
+  --el-border-radius-base: 6px;
+  --el-border-radius-small: 4px;
+  --el-dialog-border-radius: 8px;
+  --el-messagebox-border-radius: 8px;
+  --el-popover-border-radius: 8px;
+  --el-popper-border-radius: 6px;
+  --el-card-border-radius: 8px;
+}
+
+/* 确认弹框（退出登录等）图标与主题蓝对齐：
+   MessageBox Teleport 到 body，只能写全局；仅覆盖 info 类，
+   真正的 warning（如 COOKIE_SECURE 配置警告）保留黄色警示语义 */
+.el-message-box-icon--info {
+  color: var(--el-color-primary) !important;
+}
+
+/* v21.37：批量删除等弹框隐藏 type 默认图标（ElMessageBox Teleport 到 body，必须全局）。
+   仅对显式传 customClass: 'msgbox-no-icon' 的弹框生效，其余弹框图标不受影响 */
+.msgbox-danger .el-message-box-icon--warning {
+  /* v21.211：高风险确认框（danger: true）的警示图标用红色，与红色确认键一致 */
+  color: var(--el-color-danger) !important;
+}
+.msgbox-no-icon .el-message-box__status {
+  display: none !important;
+}
+
+/* el-popconfirm 图标默认 #f90 橙黄（v18.3 统一主题蓝）；
+   popconfirm 同样 Teleport 到 body，必须全局覆盖 */
+.el-popconfirm__icon {
+  color: var(--el-color-primary) !important;
+  display: none !important;
+}
+
+/* v21.64：所有 el-popconfirm 按钮横向分布（取消在前、确认在后），与文案左对齐 */
+.el-popconfirm__action {
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+}
+.el-popconfirm__action .el-button {
+  margin-left: 0;
+}
+
+/* 登录页 HTTP 明文提示改主题蓝（v18.3）：提示条语义保留，黄色去掉 */
+.el-alert.http-warning {
+  --el-alert-bg-color: var(--primary-light);
+  --el-color-info: var(--primary-color);
+  border: 1px solid var(--el-color-primary-light-7);
+}
+.el-alert.http-warning .el-alert__title,
+.el-alert.http-warning .el-alert__description {
+  color: var(--primary-color);
+}
+
+html, body, #app {
+  height: 100%;
+  /* v21.168 字体栈：按用户要求改 Noto Sans SC 优先（方案 A · 零体积代价）。
+     Noto Sans SC 非系统自带字体，未安装时浏览器逐项回落到原栈，
+     因此**必须把原 Segoe UI / PingFang SC / 微软雅黑 整段保留在后面**，
+     不能只写 Noto ——否则未装字体的机器会掉到浏览器默认字形。
+     Segoe UI Variable 保留在Noto 之后：装了就用 Noto（思源黑体，
+     中英混排更统一），没装则回落 Segoe UI Variable（拉丁数字清晰）。*/
+  font-family: 'Noto Sans SC', 'Source Han Sans SC', 'Segoe UI Variable Text', 'Segoe UI', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei UI', 'Microsoft YaHei', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* v21.168 审计①：表单控件与按钮继承应用字体栈。
+   浏览器默认给 button/input/select/textarea 的是 Arial（不继承 body），
+   在 Windows 上导致「正文 Segoe/雅黑 vs 按钮与输入框 Arial」的英文与数字字形割裂。
+   这一行即修复；字体栈本身由上面的 html/body/#app 提供。 */
+button,
+input,
+select,
+textarea,
+optgroup {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+/* v21.220 代码块复制按钮（编辑态与预览态共用，全局类所以写在全局层）：
+   常态浅色（低不透明度 + muted 色）、hover 变深，点击后经 [data-copied] 切换为对勾反馈。
+   定位宿主 = 所属 pre（编辑态 TiptapEditor.vue / 预览态 notes-view.css 均已 position:relative）。 */
+.code-copy-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+  z-index: 2;
+}
+.code-copy-btn:hover {
+  opacity: 1;
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  border-color: var(--border-color);
+}
+.code-copy-btn svg {
+  width: 15px;
+  height: 15px;
+  display: block;
+}
+.code-copy-btn .code-copy-ok {
+  display: none;
+}
+.code-copy-btn[data-copied='1'] .code-copy-ic {
+  display: none;
+}
+.code-copy-btn[data-copied='1'] .code-copy-ok {
+  display: block;
+  color: var(--primary-color);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb);
+  border-radius: 5px;
+  border: 2px solid var(--bg-secondary);
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scroll-thumb-hover);
+  background-clip: padding-box;
+}
+
+* {
+  scrollbar-color: var(--scroll-thumb) transparent;
+  scrollbar-width: thin;
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.25s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+.slide-left-enter-active,
+.slide-left-leave-active {
+  transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+.slide-left-enter-from,
+.slide-left-leave-to {
+  transform: translateX(-20px);
+  opacity: 0;
+}
+
+.slide-up-enter-active,
+.slide-up-leave-active {
+  transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+.slide-up-enter-from,
+.slide-up-leave-to {
+  transform: translateY(20px);
+  opacity: 0;
+}
+
+/* Dark mode overrides */
+html.dark {
+  color-scheme: dark;
+}
+
+html[data-theme="dark"] {
+  --primary-color: #3b82f6;
+  --primary-hover: #2563eb;
+  --primary-light: #1e3a5f;
+  --primary-tint: #1e3a5f;
+  --primary-ink: #93b4ff;
+  --success-color: #34d399;
+  --warning-color: #fbbf24;
+  --danger-color: #f87171;
+  /* v21.169 暗色层级拉远（审计⑧采纳"层级"部分）：
+     原 secondary #9ca3af(5.8:1) 与 muted #8b98ad(5.0:1) 太接近、且灰/石板蓝混用，
+     弱化文字与次级文字在暗底上难以分辨。改为统一石板蓝一族、三级明显拉开：
+     #F1F5F9(16.1) / #CBD5E1(9.9) / #94A3B8(5.7)。
+     ⚠ 仅改文字层级，**不动语义色按钮**（红/蓝是语义，改动需连带复核所有按钮态）。 */
+  --text-primary: #F1F5F9;
+  --text-secondary: #CBD5E1;
+  --text-muted: #94A3B8;
+  --border-color: #374151;
+  --border-light: #1f2937;
+  --bg-primary: #1e293b;
+  --bg-secondary: #0f172a;
+  --bg-tertiary: #334155;
+  --card-shadow: none;
+  --card-shadow-lg: none;
+  --shadow-float: 0 6px 20px rgba(0, 0, 0, 0.4);
+  --scroll-thumb: #4b5563;
+  --scroll-thumb-hover: #6b7280;
+  /* v21.164 视觉改版：暗色成对补齐（--bg-hover 取比 --bg-primary #1e293b 略亮一档的冷灰蓝） */
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 10px;
+  --bg-hover: #263449;
+  --shadow-panel: none;
+  --header-gradient: #1e293b;
+  --gradient-primary: #2563eb;
+  --primary-hover: #3b82f6;
+  --el-fill-color-blank: #1e293b;
+  --el-bg-color: #1e293b;
+  --el-text-color-primary: #f3f4f6;
+  --el-text-color-regular: #cbd5e1;
+  --el-text-color-secondary: #8b98ad;
+  --el-text-color-placeholder: #8b98ad;
+  --el-box-shadow: var(--shadow-float);
+  --el-box-shadow-light: var(--shadow-float);
+  --el-border-color: #374151;
+  --el-fill-color: #334155;
+  /* EP 主色暗色版（v18.2）：与暗色主题 --primary-color #3b82f6 对齐 */
+  --el-color-primary: #3b82f6;
+  --el-color-primary-light-3: #295bac;
+  --el-color-primary-light-5: #1e417b;
+  --el-color-primary-light-7: #12274a;
+  --el-color-primary-light-8: #0c1a31;
+  --el-color-primary-light-9: #060d19;
+  --el-color-primary-dark-2: #629bf8;
+  --el-color-danger: #ef4444;
+  --el-color-danger-light-3: #a73030;
+  --el-color-danger-light-5: #782222;
+  --el-color-danger-light-7: #481414;
+  --el-color-danger-light-8: #300e0e;
+  --el-color-danger-light-9: #180707;
+  --el-color-danger-dark-2: #f26969;
+  /* EP 圆角对齐（v18.3，同亮色；v21.209 五档分级） */
+  --el-border-radius-base: 6px;
+  --el-border-radius-small: 4px;
+  --el-dialog-border-radius: 8px;
+  --el-messagebox-border-radius: 8px;
+  --el-popover-border-radius: 8px;
+  --el-popper-border-radius: 6px;
+  --el-card-border-radius: 8px;
+}
+
+html[data-theme="dark"] body {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+html[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: #4b5563;
+}
+
+html[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: #6b7280;
+}
+
+/* 用户下拉菜单中的 router-link 下划线修复：
+   菜单被 Teleport 到 body，组件 scoped 样式无法触达；
+   且 <a> 是 .el-dropdown-menu__item 的父级，须用 > a 子选择器 */
+.el-dropdown-menu > a {
+  color: inherit;
+  text-decoration: none !important;
+}
+
+/* 笔记预览【更多】下拉菜单（Teleport 到 body，须全局样式）：
+   删除项红色警示，悬停/聚焦淡红底 */
+.el-dropdown__popper .danger-item {
+  color: var(--el-color-danger);
+}
+
+.el-dropdown__popper .danger-item:not(.is-disabled):hover,
+.el-dropdown__popper .danger-item:not(.is-disabled):focus {
+  color: var(--el-color-danger);
+  background-color: rgba(220, 38, 38, 0.08);
+}

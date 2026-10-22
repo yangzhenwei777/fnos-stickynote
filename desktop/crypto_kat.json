@@ -1,0 +1,22 @@
+{
+  "generated_at": "2026-09-18",
+  "purpose": "P0-C：桌面(Go)↔服务端(Go) NPD1 解密字节级一致契约冻结；Android Phase2 复用同文件",
+  "vectors": [
+    {
+      "name": "npd1-600k-basic",
+      "format": "npd1",
+      "iter": 600000,
+      "password": "Kat-Passw0rd-2026",
+      "plaintext": "P0-C 对拍向量·新格式 NPD1 600k。中文 🎹 \u003cb\u003ehtml\u003c/b\u003e",
+      "ciphertext_b64": "TlBEMQAJJ8Avj0Md0NhxnobK6p/8lnZddQ6Rh29qW5IRWn+u41YhSNwSPNuUKLAOTmHRUZoM0w+Z6n7Kg3bsNRkWbvaySwp//p14crV+r48TzLtP9eOiooUO8ACJdHt5BtxRBFZqmcRWBuYDyTmJMAk5a7c="
+    },
+    {
+      "name": "legacy-4096",
+      "format": "legacy",
+      "iter": 4096,
+      "password": "legacypass",
+      "plaintext": "legacy note 兼容路径",
+      "ciphertext_b64": "JtC0OOaTF/iJlDOqT1WnAcFxpvgDgb1VTCVWNxat7k2cA+H1mPvBXhJ046ZezChiBT3MI8Jg7p47iMuvhOutBLstOnI="
+    }
+  ]
+}

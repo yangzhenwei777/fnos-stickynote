@@ -1,0 +1,14 @@
+{
+    ".url": {
+        "stickynote.Application": {
+            "title": "Sticky note",
+            "icon": "images/icon_{0}.png",
+            "type": "url",
+            "protocol": "",
+            "gatewaySocket": "app.sock",
+            "gatewayPrefix": "/app/stickynote",
+            "url": "/app/stickynote",
+            "allUsers": true
+        }
+    }
+}

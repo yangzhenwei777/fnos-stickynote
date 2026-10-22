@@ -1,0 +1,8 @@
+# Build outputs and local dependencies
+build/bin/
+build/release/
+build/webview2-runtime/
+node_modules/
+*.exe
+frontend/dist/*
+!frontend/dist/index.html

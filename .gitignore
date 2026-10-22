@@ -1,0 +1,56 @@
+# OS / IDE
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Build output
+release/
+server/static/dist/*
+!server/static/dist/index.html
+web/dist/
+web/dist-desktop/
+web/release/
+desktop/build/bin/
+desktop/build/release/
+desktop/build/webview2-runtime/
+desktop/build/windows/installer/tmp/
+desktop/frontend/dist/*
+!desktop/frontend/dist/index.html
+
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+
+# Data and secrets
+*.db
+*.db-wal
+*.db-shm
+data/
+upload/
+.jwt_secret
+*.log
+.env
+.env.local
+.env.*.local
+scripts/env.local
+scripts/*.env
+*.secret
+
+# Binaries and packages
+server/sticky-note
+server/sticky-note-server
+server/sticky-note-linux-amd64*
+server/*.exe
+desktop/build/bin/*.exe
+*.fpk
+*.tar
+*.tar.gz
+*.tar.xz
+*.zip

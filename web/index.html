@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <!--
+      CSP 纵深防护。刻意不包含 frame-ancestors / X-Frame-Options：
+      fnOS 桌面通过 iframe 嵌入应用，设置后桌面图标将无法打开。
+      img-src 仅 'self' data: blob:（v18.7 起禁外链图片，用户确认）；
+      style-src 的 'unsafe-inline' 为 Element Plus / tiptap 内联样式所必需。
+
+      v2.1.2：script-src 追加内联启动脚本（基址自举 + 启动兜底）的 sha256 白名单。
+      ⚠ 修改 head 里 #sn-boot-inline 脚本后**必须**同步重算 hash，
+      三处保持一致：本 meta、server/middleware/secure.go 的响应头常量、
+      以及 Go 单测 TestBootFallbackHashMatchesInlineScript（直接判红，防静默失效）。
+      重算：python -c "import hashlib,base64,re;s=open('web/index.html',encoding='utf-8').read();m=re.search(r'<script id=\"sn-boot-inline\">(.*?)</script>',s,re.S);print('sha256-'+base64.b64encode(hashlib.sha256(m.group(1).encode()).digest()).decode())"
+    -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-C2qFUGeWuqS80N1g2xmQsO6p70uoGAUoBv75e9IeVTo='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; base-uri 'self'; form-action 'self'">
+    <!-- ==========================================================================
+         v2.1.2 移动端启动卡死根治 —— 本脚本必须排在**所有相对资源之前**，
+         且必须内联（任何外部文件都可能正是加载失败的那一个）。
+
+         ① 基址自举：把 <base href> 按「实际挂载点」钉好。
+            - fnOS Web 桌面：type:url + port 直连 http://host:13389/ → base = "/"
+            - fnOS 手机 App / 远程访问：经网关 /app/<appname>/ 子路径加载 → base = "/app/<appname>/"
+            旧口径把资源写成根绝对路径 /assets/…，子路径下被解析到宿主根 → 飞牛主站
+            回 404 + text/html → <script type="module"> MIME 不符被拒 → Vue 永不挂载。
+
+         ② 启动兜底：2.1.1 的兜底写在 bundle 内的 bootGuard.js，一旦 bundle 本身没被
+            加载/执行，兜底等于零防护（用户只看到「永远正在启动」，连重载链接都没有）。
+            这里在任何 JS 之前同步注册三类失败：资源 404、脚本异常、8 秒超时。
+
+         ③ 端口/前缀判定说明：网关可能剥前缀（应用只看到 /）也可能不剥
+            （看到 /app/<appname>/…）。剥前缀时服务端无法反推前缀，所以**判定放在
+            浏览器侧**——location.pathname 永远是用户实际看到的地址栏，最可靠。
+         ========================================================================== -->
+    <script id="sn-boot-inline">
+(function(){
+  /* ---------- ① 挂载基址自举 ---------- */
+  var meta=document.querySelector('meta[name="sn-app-base"]');
+  var base=meta?(meta.getAttribute('content')||''):'';
+  if(!base){
+    var m=/^(\/app\/[A-Za-z0-9._-]+)(?:\/|$)/.exec(location.pathname||'/');
+    base=m?m[1]:'';
+  }
+  var b=document.createElement('base');
+  b.setAttribute('href',base?base+'/':'/');
+  if(document.head){document.head.insertBefore(b,document.head.firstChild);}
+
+  /* ---------- ② 启动兜底 ---------- */
+  var done=false;
+  function fail(m){
+    if(window.__SN_BOOTED__||window.__SN_BOOT_FAILED__||done){return;}
+    /* 本脚本在 <head> 执行，资源 error 可能早于 <body> 解析完成——
+       此时 #boot-guard 还不存在。**不能在这里就置 done**，
+       否则 8 秒超时会被 done 挡住，兜底永久失效（v2.1.2 实测踩坑）。 */
+    var g=document.getElementById('boot-guard');
+    if(!g){return;}
+    done=true;
+    var t=g.querySelector('.boot-title');
+    var h=g.querySelector('.boot-hint');
+    var r=document.getElementById('boot-reload');
+    if(t){t.textContent='Sticky note 启动失败';t.style.color='#c45656';}
+    if(h){h.textContent='错误摘要：'+(m||'前端脚本未执行。')+' 可点下方按钮重新加载；若反复出现，请把本页截图发给维护者。';}
+    if(r){r.style.display='inline-block';}
+    g.style.background='#fef0f0';
+  }
+  window.__SN_BOOT_FAIL__=fail;
+  window.addEventListener('error',function(e){
+    var el=e.target;
+    if(el&&(el.tagName==='SCRIPT'||el.tagName==='LINK')){fail('资源加载失败 '+(el.src||el.href||''));}
+  },true);
+  setTimeout(function(){if(!window.__SN_BOOTED__){fail('超过 8 秒仍未完成初始化。');}},8000);
+})();
+    </script>
+    <link rel="icon" type="image/png" href="./favicon.png">
+    <link rel="apple-touch-icon" href="./icon-192.png">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#3B82F6">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Sticky note">
+    <title>Sticky note</title>
+  </head>
+  <body>
+    <!-- v21.194 白屏根治：静态启动占位——Vue 挂载成功后由 main.js 移除。
+         v21.195：占位改三态（启动中/成功移除/失败展示原因+重载），且「重新加载」
+         是纯 <a href>，不依赖任何 JS——即便整个 bundle 没跑起来也能自救。 -->
+    <div id="boot-guard" style="position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f5f7fa;color:#606266;font:14px/1.8 system-ui,-apple-system,'Segoe UI',sans-serif;z-index:99998;">
+      <div class="boot-title" style="font-size:17px;margin-bottom:8px;">正在启动 Sticky note…</div>
+      <div class="boot-hint" style="color:#909399;text-align:center;max-width:520px;padding:0 16px;">若长时间停留在此页面，请按 Ctrl+R 重新加载；反复出现请到「账号与设备」查看同步状态。</div>
+      <!-- v2.1.2：相对 './'——有了 head 里自举的 <base>，它会解析回挂载点而非宿主根。 -->
+      <a id="boot-reload" href="./" style="display:none;margin-top:14px;color:#409eff;text-decoration:none;font-size:14px;">重新加载 Sticky note</a>
+    </div>
+    <div id="app"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

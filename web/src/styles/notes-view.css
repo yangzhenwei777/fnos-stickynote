@@ -1,0 +1,1087 @@
+.notes-container {
+  display: flex;
+  /* v21.86：MainLayout 已无顶部菜单栏且内容区无 padding，三栏布局满高 */
+  height: 100vh;
+  position: relative;
+  background: var(--bg-secondary);
+}
+
+/* v21.89：移动端文件夹栏已整个移除（用户确认）——文件夹入口迁移到
+   /notes-list 卡片列表页标题旁（NotesListView）。本块样式随之一并清理，
+   避免死代码。 */
+
+/* v20.8 侧栏折叠 */
+.sidebar-toggle-btn {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+/* v20.8 侧栏展开按钮（折叠时在编辑器左边缘显示） */
+.sidebar-expand-btn {
+  position: absolute;
+  /* v21.35：top 12px → 6px，按钮中心(6+22=28px)与标题栏中心(12+16=28px)对齐
+     （v21.34 标题栏 padding 改对称后，原 top 12px 使按钮偏低 6px）
+     v21.45：标题栏 padding 12px → 18px 中心变 34px，展开按钮同步 top 6px → 12px，
+     按钮中心(12+22=34px)与标题栏中心(18+16=34px)重新对齐 */
+  top: 16px;
+  left: 4px;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  z-index: 5;
+}
+.sidebar-expand-btn:hover {
+  color: var(--primary-color);
+  background: var(--bg-hover);
+}
+.sidebar-toggle-btn:hover {
+  color: var(--primary-color);
+  background: var(--bg-hover);
+}
+.notes-sidebar.sidebar-collapsed {
+  width: 0 !important;
+  overflow: hidden;
+  padding: 0;
+  border: none;
+}
+.notes-sidebar {
+  width: 320px;
+  background: var(--bg-primary);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border-color);
+  transition: width 0.25s ease;
+}
+
+.sidebar-header {
+  /* v21.207：按钮 44→36px，顶距 12→16px，按钮中心线仍为 34px（与编辑区标题栏对齐） */
+  padding: 16px 14px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sidebar-header .el-button {
+  margin-left: 0 !important;
+}
+
+/* v21.164：主操作按钮去渐变，统一实心主色；v21.207：36px / 8px 圆角 / 500 字重 */
+.create-btn {
+  flex: 1;
+  height: 36px;
+  border-radius: var(--radius-md);
+  font-weight: 500;
+  background: var(--primary-color);
+  border: none;
+  transition: background-color 0.15s;
+}
+
+.create-btn:hover {
+  background: var(--primary-hover);
+}
+
+.import-btn {
+  height: 36px;
+  border-radius: var(--radius-md);
+  font-weight: 500;
+  border-color: var(--border-color);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  transition: border-color 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+
+.import-btn:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+.sidebar-search {
+  padding: 0 12px 12px;
+}
+
+.search-box {
+  position: relative;
+}
+
+.short-query-hint {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+  padding-left: 14px;
+  white-space: nowrap;
+  z-index: 5;
+}
+
+.search-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  font-size: 18px;
+  z-index: 1;
+}
+
+/* v21.164：搜索框白底细边框（去灰底块，对齐图2 基线） */
+.search-input :deep(.el-input__wrapper) {
+  padding-left: 44px !important;
+  border-radius: var(--radius-md);
+  box-shadow: 0 0 0 1px var(--border-color);
+  background: var(--bg-primary);
+  transition: box-shadow 0.15s;
+}
+
+.search-input :deep(.el-input__wrapper:hover) {
+  box-shadow: 0 0 0 1px var(--primary-color);
+  background: var(--bg-primary);
+}
+
+.search-input :deep(.el-input__wrapper.is-focus) {
+  box-shadow: 0 0 0 2px var(--primary-color);
+  background: var(--bg-primary);
+}
+
+.sidebar-tags {
+  padding: 0 20px 16px;
+}
+
+.tags-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 10px;
+}
+
+.tags-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tag-item {
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  cursor: pointer;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: none;
+  transition: background-color 0.15s;
+}
+
+.tag-item:hover {
+  background: var(--border-color);
+}
+
+/* v21.164：选中标签去渐变与重投影，实心主色 */
+.tag-item.active {
+  background: var(--primary-color);
+  color: white;
+}
+
+.clear-tag {
+  background: #fef2f2;
+  color: var(--danger-color);
+}
+
+.clear-tag:hover {
+  background: #fee2e2;
+}
+
+html[data-theme="dark"] .clear-tag {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+}
+
+html[data-theme="dark"] .clear-tag:hover {
+  background: rgba(239, 68, 68, 0.25);
+}
+
+.note-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 4px 12px;
+}
+
+/* v21.164 视觉改版（图2 基线）：中栏灰卡片 → 白底列表 + 细分隔线；
+   hover 只上底纹不上浮。
+   v21.165 修订（用户拍板方案 A·最小改动）：选中态改回**浅蓝色圆角底纹** ——
+   204 轮给选中态加的「左侧 3px 主色强调条」（inset box-shadow）与方角底纹
+   偏离设计基线，现移除强调条、底纹统一圆角（hover 与 active 同形状，避免
+   两种底纹形状打架）。细分隔线保留（属 204 基线的一部分，本次不动）。 */
+.note-item {
+  position: relative;
+  padding: 12px 14px;
+  margin-bottom: 0;
+  cursor: pointer;
+  transition: background-color 0.15s;
+  background: transparent;
+  border-radius: var(--radius-md);
+}
+
+/* v21.207：细分隔线改为缩进的伪元素（避免圆角 + border-bottom 在角上弯折）；
+   悬停/选中项及其上一项不画线，使底纹边缘干净 */
+.note-item::after {
+  content: '';
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 0;
+  height: 1px;
+  background: var(--border-light);
+}
+
+.note-item:hover {
+  background: var(--bg-hover);
+}
+
+.note-item.active {
+  background: var(--primary-light);
+}
+
+.note-item:hover::after,
+.note-item.active::after,
+.note-item:has(+ .note-item:hover)::after,
+.note-item:has(+ .note-item.active)::after {
+  display: none;
+}
+
+.note-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.note-item-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+
+.note-item-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--primary-color);
+  opacity: 0;
+  flex-shrink: 0;
+}
+
+.note-item.active .note-item-dot {
+  opacity: 1;
+}
+
+.note-item-preview {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 0;
+  line-height: 1.55;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  /* v21.207：原 break-all 会把英文单词/数字从中间截断；overflow-wrap:anywhere 仅在放不下时才断 */
+  overflow-wrap: anywhere;
+}
+
+.note-item-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.note-item-time {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.note-item-tags {
+  display: flex;
+  gap: 4px;
+}
+
+.mini-tag {
+  padding: 2px 8px;
+  background: var(--border-color);
+  color: var(--text-secondary);
+  font-size: 12px;
+  border-radius: var(--radius-sm);
+}
+
+.empty-list {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+}
+
+.empty-icon {
+  color: var(--text-muted);
+  margin-bottom: 16px;
+}
+
+.empty-list h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 6px;
+}
+
+.empty-list p {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+/* 2026-10-15 滚动续载尾部两态：续载中 / 已全部加载（跟随空态的淡色小字风格） */
+.list-tail-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 12px 0 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+  user-select: none;
+}
+
+.notes-editor {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-primary);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.back-btn {
+  color: var(--primary-color);
+  font-weight: 500;
+}
+
+.editor-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  /* v21.34：对称 padding，标题栏在顶部区域视觉居中（原 24px/8px 不对称导致偏下）
+     v21.45：18px 顶距使标题输入框中心线（18+16=34px）与左侧 sidebar-header
+     按钮中心线（v21.207：16+18=34px）水平对齐 */
+  padding: 18px 32px 18px;
+  flex-shrink: 0;
+}
+
+.title-input :deep(.el-input__wrapper) {
+  box-shadow: none !important;
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  padding: 0;
+  /* v21.34：显式高度 + line-height，26px 大字在输入框内垂直居中（原继承 normal 导致文字下沉，与按钮视觉错位） */
+  height: 32px;
+  line-height: 32px;
+}
+
+.title-input :deep(.el-input__inner) {
+  color: var(--text-primary);
+  /* v21.207：外层 wrapper 的字重不会被 input 继承，须在内层显式声明 */
+  font-weight: 600;
+}
+
+.editor-edit-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.editor-content {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.note-preview-content {
+  padding: 24px 32px;
+  /* v21.169：移除 207 改版新增的 max-width: 784px —— 宽屏下正文只占左半、
+     右侧大片留白（用户实机反馈，与 206 及之前的观感不一致）。
+     本项目是笔记应用而非阅读器，内容区应占满可用宽度。 */
+  line-height: 1.8;
+  /* v21.48：与 .view-content 一致的字号/颜色（编辑内预览渲染一致性） */
+  font-size: 16px;
+  color: var(--text-primary);
+}
+
+.editor-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  color: var(--text-secondary);
+  text-align: center;
+  padding: 8px 16px;
+  overflow-y: auto;
+}
+
+.editor-empty h2 {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 8px;
+}
+
+.editor-empty p {
+  font-size: 15px;
+  color: var(--text-secondary);
+  margin: 0 0 16px;
+}
+
+.empty-btn {
+  border-radius: var(--radius-md);
+  font-weight: 500;
+  background: var(--primary-color);
+  border: none;
+}
+
+/* 仪表板样式 */
+.dashboard-container {
+  width: 100%;
+  padding: 8px 16px;
+}
+
+.dashboard-header {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.dashboard-header h2 {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 4px 0 2px;
+  letter-spacing: -0.5px;
+}
+
+.dashboard-header p {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin: 0 0 8px;
+}
+
+.recent-notes-section {
+  background: var(--bg-primary);
+  border-radius: var(--radius-lg);
+  padding: 20px 16px;
+  border: 1px solid var(--border-color);
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.section-header h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.more-link {
+  color: var(--primary-color) !important;
+  font-weight: 500;
+  font-size: 12px;
+}
+
+.more-link:hover {
+  color: var(--primary-hover) !important;
+}
+
+.recent-notes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.recent-note-item {
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s;
+  text-align: left;
+  border: 1px solid var(--border-color);
+}
+
+.recent-note-item:hover {
+  background: var(--primary-light);
+  border-color: var(--primary-tint);
+}
+
+.recent-note-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.recent-note-preview {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  /* v21.207：原 break-all 会把英文单词/数字从中间截断；overflow-wrap:anywhere 仅在放不下时才断 */
+  overflow-wrap: anywhere;
+}
+
+.recent-note-time {
+  font-size: 12px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.recent-note-footer {
+  display: flex;
+  align-items: center;
+  /* v21.115：recent-note-time 已隐藏（时间栏需求），footer 只剩编辑按钮，
+     space-between 会把唯一子元素挤到左侧——改 flex-end 保持按钮原右侧位置 */
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.recent-note-edit-btn {
+  flex-shrink: 0;
+  border-radius: var(--radius-md);
+  font-weight: 500;
+}
+
+.no-recent-notes {
+  text-align: center;
+  padding: 32px 16px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.empty-btn {
+  margin-top: 16px;
+  border-radius: var(--radius-md);
+  font-weight: 500;
+  font-size: 14px;
+  padding: 10px 20px;
+  background: var(--primary-color);
+  border: none;
+}
+
+/* View mode styles */
+.note-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  /* v21.45：顶部 24px → 10px，预览操作按钮中心线（10+8+16=34px）与
+     左侧 sidebar-header 按钮中心线（v21.207：16+18=34px）水平对齐 */
+  padding: 10px 40px 24px;
+}
+
+/* v21.23 侧栏收起时：编辑标题栏/查看操作区左移，为「展开笔记列表」按钮让位（按钮占 4~48px） */
+.editor-header.has-expand-btn,
+.note-view.has-expand-btn {
+  padding-left: 64px;
+}
+
+.view-header {
+  background: var(--bg-primary);
+  margin-bottom: 4px;
+  /* 顶距 4px：操作按钮中心线（10+4+4+16=34px）与左侧 sidebar-header 按钮中心线对齐
+     （延续 v21.45 对齐基准，原顶部按钮行移入标题行后由本行内边距维持） */
+  padding: 4px 0 8px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+/* 预览重设计（方案B）：标题过长时自然换行，右侧按钮经 flex-start 与标题第一行对齐 */
+.view-title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 0;
+}
+
+.view-title {
+  flex: 1;
+  min-width: 0;
+  /* v21.164 视觉改版（图2 基线）：阅读页标题 32px → 28px（建议区间 26–30px） */
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+  margin: 0;
+  line-height: 1.3;
+  word-break: break-word;
+}
+
+.view-content {
+  flex: 1;
+  /* v21.169：移除 207 改版新增的 max-width: 720px（同 .note-preview-content）。
+     206 及之前无此限制、内容占满可用宽度；恢复该观感。 */
+  line-height: 1.8;
+  font-size: 16px;
+  color: var(--text-primary);
+  padding: 4px 0;
+}
+
+/* v21.48：块级样式同时应用于正常预览（.view-content）与编辑内预览（.note-preview-content），
+   避免编辑后点【预览】时表格/标题/列表等样式丢失（此前仅 .view-content 有样式） */
+.view-content :deep(h1),
+.note-preview-content :deep(h1) {
+  font-size: 2em;
+  font-weight: 600;
+  margin: 0.67em 0;
+}
+
+.view-content :deep(h2),
+.note-preview-content :deep(h2) {
+  font-size: 1.5em;
+  font-weight: 600;
+  margin: 0.75em 0;
+}
+
+.view-content :deep(h3),
+.note-preview-content :deep(h3) {
+  font-size: 1.17em;
+  font-weight: 600;
+  margin: 0.83em 0;
+}
+
+.view-content :deep(p),
+.note-preview-content :deep(p) {
+  margin: 1em 0;
+}
+
+.view-content :deep(ul),
+.view-content :deep(ol),
+.note-preview-content :deep(ul),
+.note-preview-content :deep(ol) {
+  padding-left: 2em;
+  margin: 1em 0;
+}
+
+.view-content :deep(li),
+.note-preview-content :deep(li) {
+  margin: 0.5em 0;
+}
+
+/* v21.82 任务清单（插入清单）阅读态：去圆点、复选框与文字对齐、不可编辑 */
+.view-content :deep(ul[data-type="taskList"]),
+.note-preview-content :deep(ul[data-type="taskList"]) {
+  list-style: none;
+  padding-left: 0.4em;
+}
+.view-content :deep(ul[data-type="taskList"] li),
+.note-preview-content :deep(ul[data-type="taskList"] li) {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0.3em 0;
+}
+/* v21.83 对齐修复：label 高度=首行行高并内部居中，复选框与首行文字中线对齐
+   v21.113：label 保持 pointer-events:none（点 label/文字不切换勾选），
+   子级 input 显式恢复 auto（pointer-events 可继承，需逐级覆盖）
+   v21.116：height 1.7em→1.8em——本规则服务于 .view-content/.note-preview-content
+   （两容器行高均为 1.8，p 继承容器无独立覆盖），v21.83 照搬了编辑器校准值
+   1.7em 致复选框中线偏高 0.05em≈0.8px；编辑器侧（TiptapEditor.vue）行高 1.7
+   与其 label 1.7em 匹配勿动。若调整容器行高须同步本 height */
+.view-content :deep(ul[data-type="taskList"] li > label),
+.note-preview-content :deep(ul[data-type="taskList"] li > label) {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  height: 1.8em;
+  pointer-events: none;
+}
+.view-content :deep(ul[data-type="taskList"] li > div),
+.note-preview-content :deep(ul[data-type="taskList"] li > div) {
+  flex: 1 1 auto;
+}
+.view-content :deep(ul[data-type="taskList"] li > div > p:first-child),
+.note-preview-content :deep(ul[data-type="taskList"] li > div > p:first-child) {
+  margin-top: 0;
+}
+.view-content :deep(ul[data-type="taskList"] li > div > p:last-child),
+.note-preview-content :deep(ul[data-type="taskList"] li > div > p:last-child) {
+  margin-bottom: 0;
+}
+.view-content :deep(ul[data-type="taskList"] input[type="checkbox"]),
+.note-preview-content :deep(ul[data-type="taskList"] input[type="checkbox"]) {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--primary-color);
+  /* v21.113：仅方框本身可点 → @change 委托回写（阅读态/预览态勾选） */
+  pointer-events: auto;
+}
+/* v21.116 存量兜底：历史笔记入库时经服务端 sanitize（bluemonday 无属性放行清单
+   缺 label，AllowElements("label") 不完整——见 server/handler/sanitize.go v21.116 注），
+   label 壳被剥、input 裸挂 li 下，li 为 flex+flex-start 使其顶对齐，
+   中心与首行文字中线差 ≈6.4px。子选择器仅命中直挂形态
+   （新数据有 label 时 input 在 label 内不匹配，走上方 li > label 的 1.8em 路径）。
+   margin-top = (首行行盒 1.8em − 16px) / 2，与 label 路径的内部居中等效。
+   后端 v21.116 起新写入保留 label，但存量已剥壳无法凭空恢复，本规则长期保留 */
+.view-content :deep(ul[data-type="taskList"] li > input[type="checkbox"]),
+.note-preview-content :deep(ul[data-type="taskList"] li > input[type="checkbox"]) {
+  /* font-size: inherit 必须在前：input 的 UA 默认字号 13.33px 会让 calc 里的
+     1.8em 失真（(1.8×13.33−16)/2=4px → 中线仍差 2.4px，真机 A7 实测）；
+     继承容器字号后 1.8em 与首行行盒同基准，方框视觉大小由 width/height 钉死不受影响 */
+  font-size: inherit;
+  margin-top: calc((1.8em - 16px) / 2);
+}
+.view-content :deep(mark),
+.note-preview-content :deep(mark) {
+  border-radius: var(--radius-xs);
+  padding: 0 2px;
+}
+
+/* v21.118 评审修复：链接文字色继承正文/所设字体色（随主题翻转），下划线跟随文字色 */
+.view-content :deep(a),
+.note-preview-content :deep(a) {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: currentColor;
+}
+/* v21.119：彩色链接下划线跟随内层文字元素的真实颜色（a 外层时其 currentColor 只是主题前景） */
+.view-content :deep(a > *),
+.note-preview-content :deep(a > *) {
+  text-decoration: underline;
+  text-decoration-color: currentColor;
+}
+
+.view-content :deep(blockquote),
+.note-preview-content :deep(blockquote) {
+  /* v21.207：去掉 italic——中文无真斜体，浏览器合成的伪斜体会让笔画发虚；左条 4px → 2px */
+  border-left: 2px solid var(--primary-color);
+  padding-left: 14px;
+  margin: 1em 0;
+  color: var(--text-secondary);
+}
+
+.view-content :deep(code),
+.note-preview-content :deep(code) {
+  background: var(--bg-tertiary);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  font-size: 0.9em;
+}
+
+/* v21.220：position:relative 供 .code-copy-btn（复制按钮）absolute 钉右上角 */
+.view-content :deep(pre),
+.note-preview-content :deep(pre) {
+  position: relative;
+  background: var(--bg-tertiary);
+  padding: 16px;
+  border-radius: var(--radius-lg);
+  overflow-x: auto;
+  margin: 1em 0;
+}
+
+.view-content :deep(pre code),
+.note-preview-content :deep(pre code) {
+  background: none;
+  padding: 0;
+}
+
+.view-content :deep(img),
+.note-preview-content :deep(img) {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-lg);
+  margin: 1em 0;
+  /* v21.179：图片可点击放大（查看器），光标提示可交互 */
+  cursor: zoom-in;
+}
+
+/* v20.8 MD 导入表格样式（v21.48 扩展给编辑内预览：编辑后点预览表格边框可见） */
+.view-content :deep(table),
+.note-preview-content :deep(table) {
+  border-collapse: collapse;
+  margin: 12px 0;
+  width: 100%;
+}
+.view-content :deep(th),
+.view-content :deep(td),
+.note-preview-content :deep(th),
+.note-preview-content :deep(td) {
+  border: 1px solid var(--border-color);
+  padding: 8px 12px;
+  text-align: left;
+}
+.view-content :deep(th),
+.note-preview-content :deep(th) {
+  background: var(--bg-secondary);
+  font-weight: 600;
+}
+
+/* 预览标题行右侧操作区：【编辑/查看】主按钮 +【更多】下拉按钮。
+   32px 按钮相对标题首行（32×1.3≈42px）下压 4px 垂直居中，
+   中心线 = 10(note-view) + 4(header) + 4 + 16 = 34px，与 sidebar-header 对齐 */
+.view-actions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-top: 4px;
+}
+
+/* 预览页页脚按钮：与新建按钮统一的圆角与实心主色风格（v21.207 去渐变） */
+.view-actions .el-button {
+  border-radius: var(--radius-md);
+}
+
+.view-actions .el-button--primary {
+  background: var(--primary-color);
+  border: none;
+}
+
+.view-actions .el-button--primary:hover {
+  background: var(--primary-hover);
+}
+
+/* 移动端特定优化 */
+@media (max-width: 768px) {
+  .dashboard-container {
+    padding: 4px 4px;
+  }
+  
+  .dashboard-header h2 {
+    font-size: 16px;
+    margin: 2px 0 1px;
+  }
+  
+  .dashboard-header p {
+    font-size: 12px;
+    margin: 0 0 8px;
+  }
+  
+  .recent-notes-section {
+    padding: 10px 8px;
+  }
+  
+  .section-header h3 {
+    font-size: 14px;
+  }
+  
+  .recent-note-item {
+    padding: 8px;
+  }
+  
+  .recent-note-title {
+    font-size: 12px;
+  }
+  
+  .recent-note-preview {
+    font-size: 12px;
+  }
+  
+  .empty-btn {
+    margin-top: 8px;
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+}
+
+.sidebar-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(15, 23, 42, 0.4);
+  z-index: 100;
+}
+
+@media (max-width: 768px) {
+  .notes-container {
+    height: calc(100vh - 56px - 16px);
+  }
+
+  .notes-sidebar {
+    display: none;
+  }
+
+  .sidebar-overlay {
+    display: none;
+  }
+
+  .notes-editor {
+    width: 100%;
+  }
+
+  .editor-header {
+    padding: 10px 16px 10px;
+  }
+
+  .title-input :deep(.el-input__wrapper) {
+    font-size: 24px;
+  }
+
+  .note-view {
+    padding: 16px;
+  }
+
+  .view-title {
+    font-size: 24px;
+  }
+
+  /* 移动端保持与桌面一致的「标题左、按钮右」布局（方案B）：
+     24px 标题首行（≈31px）与 32px 按钮基本等高，无需下压 */
+  .view-actions {
+    gap: 8px;
+    padding-top: 0;
+  }
+
+  .view-actions .el-button {
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+
+  /* v21.42 移动端编辑页圆角统一（与 recent-notes 的 12px 一致）：
+     白底编辑卡片悬浮在浅灰页面上。
+     v21.43：圆角统一由外层 .notes-editor 的 overflow:hidden 裁剪——
+     toolbar / content 均改为直角（border-radius:0），避免灰条顶部加 16px 圆角
+     在卡片内部露出白底、导致标题栏下侧与内容区上侧出现圆弧缺口的视觉瑕疵 */
+  .notes-editor {
+    margin: 8px 12px 12px;
+    border-radius: var(--radius-xl);
+    width: auto;
+  }
+
+  /* TiptapEditor 为子组件，scoped 下需 :deep 命中内部元素 */
+  .notes-editor :deep(.editor-toolbar) {
+    border-radius: 0;
+  }
+
+  .notes-editor :deep(.editor-content) {
+    border-radius: 0;
+    /* 注意：不设 overflow hidden——.editor-content 是滚动容器（overflow-y:auto），
+       圆角裁剪由外层 .notes-editor 的 overflow:hidden 完成 */
+  }
+
+  /* 预览模式内容（无 .editor-content 包裹）：同由外层 overflow:hidden 裁剪 */
+  .note-preview-content {
+    border-radius: 0;
+  }
+}
+
+/* 右下角保存状态指示器 */
+#save-status {
+  position: fixed;
+  bottom: 12px;
+  right: 20px;
+  font-size: 12px;
+  pointer-events: none;
+  z-index: 2000;
+  min-height: 16px;
+  background: #ffffffeb;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  font-family: -apple-system, sans-serif;
+}
+
+html[data-theme="dark"] #save-status {
+  background: rgba(30, 41, 59, 0.92);
+}
+
+.save-status-editing {
+  color: var(--text-muted);
+}
+
+/* v21.168 审计③：保存状态色对比度不足（白底实测「已保存」2.54:1 /「保存中」2.15:1，均低于 WCAG AA 4.5:1）。
+   同色系各加深一档：#10b981 → #047857（5.5:1）、#f59e0b → #B45309（5.0:1），
+   语义与"一眼可辨"不变，仅提高可读性。失败红 #ef4444 保持（与 danger token 同源，3.0:1 已由粗体+文案兜底）。*/
+.save-status-saving {
+  color: #B45309;
+}
+
+.save-status-saved {
+  /* v21.210 恢复绿色（一眼可辨）；v21.168 加深到 #047857 以过 AA */
+  color: #047857;
+}
+
+.save-status-error {
+  color: #ef4444;
+}
+
+/* v20.8 图片全屏预览 */
+.image-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  cursor: zoom-out;
+  animation: fadeIn 0.2s ease;
+}
+.image-overlay-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+  z-index: 1;
+}
+.image-overlay-close:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+.image-overlay-img {
+  max-width: 90vw;
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: var(--radius-lg);
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}

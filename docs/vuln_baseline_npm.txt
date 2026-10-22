@@ -1,0 +1,48 @@
+# npm 漏洞基线（vuln_gate.py --mode npm 白名单）
+# 生成：2026-08-06 20:50 ｜ 最后更新：2026-08-27 00:30（v21.81 交付扫描，补挂 glob/nanoid）
+# 工具：npm audit --json --registry=https://registry.npmjs.org
+# 更新方式：运行 `npm audit --json --registry=https://registry.npmjs.org | python3 scripts/vuln_gate.py --mode npm --baseline docs/vuln_baseline_npm.txt`（需 npmjs.org 可达）
+# 规则：CI 中 audit 发现的漏洞，凡 GHSA ID 或包名在本文件内的视为"在案挂账"，不阻断；新增才阻断（纪律 6.2）
+
+# ---- 在案挂账条目 ----
+# 2026-08-13 v21.66（三份审计 P2）：sharp <0.35.0（libvips CVE-2026-33327/33328/35590/35591，high，GHSA-f88m-g3jw-g9cj）
+#   依赖链：@vite-pwa/assets-generator（optionalDependencies）→ sharp → libvips
+#   可达性：vite.config 未启用 pwaAssets 自动生成，sharp 不进构建产物/安装包/浏览器
+#   处置：⏳ 挂账（功能未启用，实际不可达），复核期限 2026-09-30；若启用 pwaAssets 须先升级 sharp>=0.35.0
+#
+# 2026-08-27 v21.81（交付前发版必扫发现）：glob GHSA-5j98-mcp5-4vw2（high，glob CLI -c/--cmd shell 注入）
+#   依赖链：@vue/test-utils（Vitest 测试工具）→ js-beautify → glob@10.4.5；vite-plugin-pwa → workbox-build → glob@11.1.0
+#   可达性：均为构建/测试期工具链，不进 fpk 运行时产物（fpk 只含编译二进制+dist 静态文件）；且利用需显式调用 glob CLI 的 -c 参数，作为库使用不涉及
+#   处置：⏳ 挂账（dev/构建期不可达），复核期限 2026-11-30
+#
+# 2026-08-27 v21.81（交付前发版必扫发现）：nanoid GHSA-2v37-7h3g-55p8（high，custom generators size=0 死循环 DoS）
+#   依赖链：vite → postcss → nanoid@3.3.17
+#   可达性：构建期工具链，不进运行时产物；触发条件为自定义 generator 传 size=0，本项目用默认用法不可达
+#   处置：⏳ 挂账（构建期不可达），复核期限 2026-11-30；随下次 vite 升级自然消化
+#
+# 历史挂账（vite 5 时代，2026-08-06 B 批次升级后已修复，保留记录备查）：
+#   GHSA-4w7w-66w2-5vf9  vite 构建期路径穿越（dev server 优化依赖）→ ✅已修（vite 8.2.1）
+#   GHSA-67mh-4wv8-2f99  vite launch-editor NTLMv2 泄露（dev server 场景）→ ✅已修（vite 8.2.1）
+#   GHSA-fx2h-pf6j-xcff vite server.fs.deny Windows 绕过（dev server 场景）→ ✅已修（vite 8.2.1）
+#   GHSA-v6wh-96g9-6wx3  esbuild dev server 任意请求（构建期工具）→ ✅已修（esbuild 0.28.1）
+
+# ============================================================================
+# 机器可读条目区（v21.91 补 —— 此前本文件 100% 为注释，门禁 load_npm_baseline 读到 0 条，
+# 3 条已挂账漏洞从未真正豁免，属"门禁空转"）
+# 格式：<GHSA-ID 或 包名> | DUE:YYYY-MM-DD | RUNTIME:yes/no | REASON:<接受原因> | OWNER:<责任人>
+# 字段约定详见《漏洞基线治理台账.md》
+# ============================================================================
+glob | DUE:2026-11-30 | RUNTIME:no | REASON:构建与测试期工具链(js-beautify/workbox-build)，不进运行时产物；利用需显式调用 glob CLI 的 -c 参数 | OWNER:项目维护者
+GHSA-5j98-mcp5-4vw2 | DUE:2026-11-30 | RUNTIME:no | REASON:同上，glob CLI -c/--cmd 命令注入 | OWNER:项目维护者
+nanoid | DUE:2026-11-30 | RUNTIME:no | REASON:构建期工具链(vite→postcss)，触发需自定义 generator 传 size=0，项目用默认用法不可达 | OWNER:项目维护者
+#
+# ---- 196 轮（2026-10-08）复核结论：全部到期/新增条目已根除，未新增挂账 ----
+# 触发：CI run 37778713645 frontend job红于「9 条新增/到期漏洞」（sharp 与 @vite-pwa/assets-generator 的
+#       豁免 DUE 2026-09-30 已到期 + 7 条新 advisory）。按纪律 6.4「能升级就升级」而非挂账：
+#   1) npm audit fix（仅在既有 ^ 范围内升，package.json 声明零变更）→ 9 条降为 2 条；
+#   2) 余下 2 条为 ajv→fast-uri 链，根因是 npm overrides 把 fast-uri 钉死在 3.1.6（官方要求 >=3.1.8）
+#      → overrides 升到 3.1.8，**npm audit 归零**；dompurify 一并升到 3.4.16（修 IN_PLACE afterSanitize advisory）；
+#   3) 处置纪律：版本已高于 fixed version 的条目（sharp / vite-plugin-pwa / @vite-pwa/assets-generator）
+#      **从基线删除**（纪律 6.2），若将来 audit 再报，由门禁正常阻断并强制复核。
+GHSA-2v37-7h3g-55p8 | DUE:2026-11-30 | RUNTIME:no | REASON:同上，custom generators size=0 死循环 DoS | OWNER:项目维护者
+# fast-uri：v21.103 曾用 npm overrides 钉 3.1.6；**196 轮复核发现 3.1.6 自身不可达面已失效**（官方 advisory 要求 >=3.1.8），已把 overrides 升到 3.1.8 根除，挂账条目撤销

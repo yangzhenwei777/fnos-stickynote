@@ -1,0 +1,17 @@
+appname               = stickynote
+version               = 2.2.0
+display_name          = Sticky note
+platform              = x86
+# checksum 字段由 fnpack build 自动计算注入，请勿手动填写
+os_min_version        = 1.2.0
+source                = thirdparty
+maintainer            = Davy
+distributor           = Davy
+desktop_uidir         = ui
+desktop_applaunchname = stickynote.Application
+desc                  = Sticky note 便签应用
+changelog             = """
+2.2.0 — 统一网关模式：unix socket + TCP 双轨监听；桌面端会话恢复与同步稳定性改进；CORS 兼容 fnOS App / FN Connect 中继形态；安全加固与依赖更新。
+2.1.x — 移动端启动与 CORS 修正、管理后台路由兼容、桌面同步与恢复修复。
+2.0.0 — 首个公开稳定基线：富文本便签、标签、全文搜索、笔记加密、TOTP、多用户隔离；fnOS FPK 与 Windows 桌面客户端。
+"""

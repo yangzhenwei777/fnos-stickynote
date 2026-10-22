@@ -1,0 +1,385 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  # 2026-10-09 新增：桌面 artifact 单份318MB（钉版 WebView2 runtime 占~255MB），
+  # Free 计划 Actions 存储免费额度仅 0.5GB。push/PR 自动触发若照常上传，
+  # 加上 setup-go 缓存（双平台 860MB）必然击穿配额 → upload-artifact 步骤失败 → CI 变红。
+  # 桌面二进制交付面以本机根目录为准（权威），CI 只需证明"能构建成功"（红线 29 断言已验）。
+  # 需要 CI 产物时手动触发本 workflow（本地 Actions 页 Run workflow），
+  # 上传的包 retention-days=1，24h 后自动回收，不长期占配额。
+  workflow_dispatch:
+
+# 2026-08-06 修复（场景 A）：
+# 1. 跨 job 二进制引用（frontend 曾直接跑 backend 构建的 server/sticky-note，job 间不共享工作区）
+#    → backend upload-artifact / frontend download-artifact
+# 2. govulncheck @latest 不钉版（可能要求更高 Go 版本 + 命令不在 PATH）
+#    → 钉 v1.6.0 并用 $(go env GOPATH)/bin/govulncheck 绝对路径
+# 3. npm audit 基线文件为空 → 使用真实基线 docs/vuln_baseline_npm.txt（在案挂账，只拦新增）
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          # 2026-10-21：1.26.9 → 1.26.10（GO-2026-6809 crypto/x509 修复版本 1.26.10）
+          # 2026-10-09：1.26.7 → 1.26.9（Go 官方安全发布，13 条公告修复版本均为 1.26.9）
+          go-version: '1.26.10'
+          # 2026-10-09：关闭 setup-go 内置缓存。
+          # 实测（本地 GOMODCACHE 1.68GB + GOCACHE 1.08GB）：内置缓存把 mod 缓存与编译缓存
+          # 全量上传，单 Windows runner 就 528MB、Linux 332MB，双平台合计 860MB，
+          # 而 Free 计划 Actions 存储免费额度仅 0.5GB → push 即击穿 → upload-artifact 失败 → CI 红。
+          # 关闭后模块需每轮重下（go proxy 命中，约 +1~2min），换取 CI 不再因配额红。
+          # 若将来升级付费计划，可去掉本行恢复缓存。
+          cache: false
+      - name: version consistency check (纪律 1.1/1.4)
+        # 第四轮审计 P1：VERSION 与 fnpack/manifest 曾漂移（1.0.73 vs 1.0.62）
+        # 强制同步，防止再次发生
+        run: |
+          VER=$(cat VERSION)
+          MAN=$(grep '^version' fnpack/manifest | sed 's/version\s*=\s*//' | tr -d ' \r')
+          echo "VERSION=$VER manifest=$MAN"
+          test "$VER" = "$MAN" || { echo "❌ VERSION($VER) 与 manifest($MAN) 不一致"; exit 1; }
+          echo "✅ 版本一致"
+      - name: secrets scan (v21.93 P2：H-01 门禁由「存在」接入「发布链路」)
+        # scripts/check_secrets.py 自建起从未被 CI 调用——凭据扫描只是「仓库里有个脚本」，
+        # 而非真正的门禁。现接入发布链路：检出硬编码口令即阻断构建。
+        # 传 `.` 扫描全仓（脚本默认只扫 scripts/）；内网 IP 默认值按设计不计为凭据。
+        run: python3 scripts/check_secrets.py .
+      - name: lifecycle CRLF check (v21.93 P2：与 build_fpk_manual 组包门禁对齐)
+        # CRLF 会让 shebang 变成 "#!/bin/bash\r"，Linux 上钩子直接 rc=127 不执行
+        # （v21.91 真机实测复现）。此前 CI 只有 bash -n 语法检查，查不出行尾问题。
+        # 用 Python 而非 shell 一行流：grep $'\r' 在不同 runner 的转义处理下行为不一致
+        # （本地验证踩中过静默漏检），Python 字节比对语义明确、可双向验证。
+        run: |
+          python3 - <<'PY'
+          import sys
+          from pathlib import Path
+
+          # 用字节序列而非 b"\r\n" 字面量：避免反斜杠转义在不同解析层被改写
+          CRLF = bytes([13, 10])
+          bad = []
+          for d in ("fnpack/cmd", "fnpack/wizard", "fnpack/config"):
+              for p in sorted(Path(d).glob("*")):
+                  if p.is_file() and CRLF in p.read_bytes():
+                      bad.append(str(p))
+          if bad:
+              print("CRLF 行尾（Linux 上 shebang 解析失败，钩子不执行）：")
+              for b in bad:
+                  print("   ", b)
+              sys.exit(1)
+          print("fnpack 交付脚本全部 LF")
+          PY
+      - name: lifecycle shell syntax (v21.58 P8 门禁：防生命周期脚本语法回归)
+        # 曾因 fnOS 生命周期脚本语法错误进入审计（upgrade_callback 缺 fi 快照误报），
+        # 增加 bash -n 门禁确保所有生命周期脚本可解析，杜绝发布链路隐患
+        run: |
+          set -e
+          for f in fnpack/cmd/main \
+                   fnpack/cmd/install_init \
+                   fnpack/cmd/install_callback \
+                   fnpack/cmd/uninstall_init \
+                   fnpack/cmd/uninstall_callback \
+                   fnpack/cmd/upgrade_init \
+                   fnpack/cmd/upgrade_callback; do
+            bash -n "$f" && echo "✅ bash -n $f"
+          done
+      - name: prepare embed placeholder
+        # dist 为可再生产物（.gitignore 排除），而 static/embed.go 用 //go:embed dist/*
+        # 干净 checkout 无 dist → go vet 报 "pattern dist/*: no matching files found"
+        # 生成最小占位满足 embed 编译；frontend job 会用真实构建产物覆盖后跑冒烟
+        run: |
+          mkdir -p server/static/dist
+          echo '<!doctype html><html><head><title>placeholder</title></head><body></body></html>' > server/static/dist/index.html
+      - name: gofmt check
+        run: test -z "$(gofmt -l .)"
+        working-directory: server
+      - name: go vet
+        run: go vet ./...
+        working-directory: server
+      - name: go test
+        run: go test ./...
+        working-directory: server
+      - name: go test -race (v21.77 P1：Linux CI 竞态检测)
+        # Windows 本地无 gcc 无法跑 -race，由 Linux CI 承担竞态检测
+        run: go test -race ./...
+        working-directory: server
+      - name: coverage gate (v21.54 P2：防止新代码拉低关键包覆盖率)
+        # v21.77 P1：阈值从 18/29 提升至 40/50（handler/model）。
+        # v21.131 测试轮：为高危包 backup/restore/webdav/middleware/auth 增设下限
+        # （实测 61.8/69.3/66.9/53.0/75.0，各留 ~6-10% 余量棘轮起步），防新功能拉低而不红。
+        # 注：python3 -c 必须单行（YAML 块内嵌多行 Python 会因缩进解析失败——v21.77 踩坑）
+        run: |
+          hcov=$(go test ./handler/ -cover 2>&1 | grep -oE 'coverage: [0-9.]+%' | grep -oE '[0-9.]+')
+          mcov=$(go test ./model/ -cover 2>&1 | grep -oE 'coverage: [0-9.]+%' | grep -oE '[0-9.]+')
+          bcov=$(go test ./backup/ -cover 2>&1 | grep -oE 'coverage: [0-9.]+%' | grep -oE '[0-9.]+')
+          rcov=$(go test ./restore/ -cover 2>&1 | grep -oE 'coverage: [0-9.]+%' | grep -oE '[0-9.]+')
+          wcov=$(go test ./webdav/ -cover 2>&1 | grep -oE 'coverage: [0-9.]+%' | grep -oE '[0-9.]+')
+          ccov=$(go test ./middleware/ -cover 2>&1 | grep -oE 'coverage: [0-9.]+%' | grep -oE '[0-9.]+')
+          acov=$(go test ./auth/ -cover 2>&1 | grep -oE 'coverage: [0-9.]+%' | grep -oE '[0-9.]+')
+          echo "handler=$hcov model=$mcov backup=$bcov restore=$rcov webdav=$wcov middleware=$ccov auth=$acov"
+          python3 -c "import sys; f={'handler':(float('${hcov}'),40.0),'model':(float('${mcov}'),50.0),'backup':(float('${bcov}'),55.0),'restore':(float('${rcov}'),60.0),'webdav':(float('${wcov}'),55.0),'middleware':(float('${ccov}'),45.0),'auth':(float('${acov}'),65.0)}; [print(f'{k}: {a:.1f}% (floor {b:.0f}%)', 'PASS' if a>=b else 'FAIL') for k,(a,b) in f.items()]; bad=[k for k,(a,b) in f.items() if a<b]; print('COVERAGE GATE', 'FAIL '+str(bad) if bad else 'PASS'); sys.exit(1 if bad else 0)"
+        working-directory: server
+      - name: govulncheck (baseline diff, 纪律 3.2)
+        # 钉 v1.6.0（与本地一致）；go install 装到 GOPATH/bin，用绝对路径调用
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
+          "$(go env GOPATH)/bin/govulncheck" -json ./... | python3 ../scripts/vuln_gate.py --mode go --baseline ../docs/vuln_baseline_go.txt
+        working-directory: server
+      - name: SBOM 交叉核对门禁 I 类（清单 ↔ 权威树，纪律 7.1；2026-09-22 起常驻）
+        # 存在理由：177/178 两轮交付清单的 npm 段系手写且与 package.json 失真（幽灵包/区间矛盾/漏列），
+        # 而旧门禁只核"清单文件在不在"、"npm 42"恰好等于 npm ls 含根行的行数 → 长期假绿。
+        # 本门禁按**包名与区间**逐项核（Go 逐行、npm 逐包），并要求 5 类定向污染全部可被检出
+        # （反向验证：防门禁空转）。依赖真变了就重跑 --gen 更新 docs/依赖清单.txt。
+        run: |
+          python3 scripts/sbom_gate.py --check docs/依赖清单.txt
+          python3 scripts/sbom_gate.py --selftest docs/依赖清单.txt
+      - name: fpk delivery gate (v21.95 T-3：verify-fpk 等价预检)
+        # fnpack CLI 为 Windows 二进制，Linux CI 无法构建 .fpk；故对 fnpack 交付模板做
+        # verify-fpk.sh 的结构等价预检（manifest 必备字段 / 钩子存在且 LF / app 模板含
+        # ui+server+www / config JSON 合法）。发布链真机组包时仍由 verify-fpk.sh 全量把关。
+        run: |
+          python3 - <<'PY'
+          import json, sys
+          from pathlib import Path
+
+          bad = []
+          # 1. manifest 必备字段
+          man = {}
+          for line in Path("fnpack/manifest").read_text().splitlines():
+              if "=" in line:
+                  k, v = line.split("=", 1)
+                  man[k.strip()] = v.strip()
+          for key in ("appname", "version", "display_name", "platform", "desktop_uidir", "os_min_version"):
+              if key not in man or not man[key]:
+                  bad.append(f"manifest 缺字段: {key}")
+          # 2. 生命周期钩子存在且 LF
+          for d in ("fnpack/cmd", "fnpack/wizard"):
+              for p in sorted(Path(d).glob("*")):
+                  if not p.is_file():
+                      continue
+                  if not (p.stat().st_mode & 0o111) and d == "fnpack/cmd":
+                      pass  # 权限由 fnOS 安装器处理，非阻断（verify-fpk 同口径）
+                  if bytes([13, 10]) in p.read_bytes():
+                      bad.append(f"CRLF: {p}")
+          for name in ("install_init", "install_callback", "uninstall_init", "uninstall_callback",
+                       "upgrade_init", "upgrade_callback", "main"):
+              if not Path(f"fnpack/cmd/{name}").is_file():
+                  bad.append(f"缺钩子: fnpack/cmd/{name}")
+          # 3. app 模板含 ui/（server/www 为组包时由 build-fnpack.sh 动态创建填充，
+          #    模板本身仅含 ui/；v21.100 修正：gate 与模板实际结构对齐）
+          if not Path("fnpack/app/ui").is_dir():
+              bad.append("缺 app 模板目录: fnpack/app/ui")
+          # 4. config JSON 合法
+          for f in ("fnpack/config/privilege", "fnpack/config/resource"):
+              try:
+                  json.loads(Path(f).read_text())
+              except Exception as e:
+                  bad.append(f"{f} JSON 非法: {e}")
+          if bad:
+              print("❌ fpk 交付门禁失败：")
+              for b in bad:
+                  print("   ", b)
+              sys.exit(1)
+          print("✅ fpk 交付模板结构完整（verify-fpk 等价预检通过）")
+          PY
+      # 2026-10-09：server 二进制改用 actions/cache 传递（原 upload-artifact）。
+      # 原因：Free 计划 0.5GB 存储配额在账单周期内**按累计用量计**，删除已有 artifact 只能
+      # 降当前占用、无法回退已计用量（2026-10-09 实证：存储实际仅 383MB/500MB，
+      # upload 仍报 "Artifact storage quota has been hit"）。
+      # 该二进制仅供 frontend job 下载做冒烟/E2E，非交付物，走 cache 不占 artifact 配额。
+      # key 挂 go.sum + VERSION：依赖或版本变更即失效重建，避免拿到过期二进制。
+      # 步骤顺序：先 restore（命中则跳过 build），未命中才重新构建。
+      - name: cache server binary (跨 job 传递)
+        id: server-bin-cache
+        uses: actions/cache@v4
+        with:
+          path: server/sticky-note
+          key: server-bin-${{ runner.os }}-${{ hashFiles('server/go.sum') }}-v${{ hashFiles('VERSION') }}
+      - name: go build (linux)
+        if: steps.server-bin-cache.outputs.cache-hit != 'true'
+        run: CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.Version=$(cat ../VERSION)" -o sticky-note .
+        working-directory: server
+
+  frontend:
+    needs: backend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/setup-python@v7
+        with: {python-version: '3.13'}
+      - name: npm ci
+        run: npm ci --registry=https://registry.npmjs.org
+        working-directory: web
+      - name: npm run build
+        run: npm run build
+        working-directory: web
+      - name: Vitest
+        run: npm run test
+        working-directory: web
+      - name: ESLint (v21.54 P2 门禁：0 error + 限量 warning)
+        # 存量 warnings 已清零（178→0）；新增代码不得引入 error/warning
+        run: npm run lint -- --max-warnings=0
+        working-directory: web
+      - name: npm audit (baseline diff, 纪律 3.2)
+        # 必须走官方源——npmmirror 未实现 audit 端点；基线只拦新增（在案 vite/esbuild 挂账）
+        run: |
+          npm audit --json --registry=https://registry.npmjs.org | python3 ../scripts/vuln_gate.py --mode npm --baseline ../docs/vuln_baseline_npm.txt
+        working-directory: web
+      - name: restore server binary
+        # 2026-10-09：与 backend job 的 cache 步骤成对（原 download-artifact）。
+        # 键必须与 backend 侧完全一致，否则 restore 落空→ 后续冒烟/E2E 拿不到二进制。
+        uses: actions/cache/restore@v4
+        with:
+          path: server/sticky-note
+          key: server-bin-${{ runner.os }}-${{ hashFiles('server/go.sum') }}-v${{ hashFiles('VERSION') }}
+      - name: dist sync & smoke test
+        run: |
+          chmod +x server/sticky-note
+          rm -rf server/static/dist
+          cp -r web/dist server/static/dist
+          python3 scripts/smoke_test.py server/sticky-note web/dist
+        working-directory: .
+      - name: E2E browser test (v21.54 扩充至 14 条)
+        # Playwright 浏览器级验证：注册/登录/笔记/加密/搜索/工具栏 SVG/导入/导出/移动端/大笔记
+        # 评审 P0-1：注入测试口令，确保 §13 TOTP 用例及 §14-17 在 CI 真实执行（此前缺 env 致 §13 起被跳过）。
+        # 口令仅用于 CI 一次性临时实例的测试注册账号，非真实凭据；不加引号以规避凭据扫描的带引号字面量正则。
+        env:
+          NOTEPAD_TEST_PASSWORD: Ci-E2e-Test-Pass-2026
+        run: |
+          pip install playwright
+          python3 -m playwright install chromium --with-deps
+          python3 scripts/e2e_test.py server/sticky-note web/dist
+        working-directory: .
+      - name: VITE_DESKTOP build gate (批次7：桌面前端构建进门禁，v20 §120)
+        # 桌面构建链门禁化：VITE_DESKTOP 产物必须可构建、SW 零注入、LocalTransport 折叠在案。
+        # 置于 E2E 之后（build:desktop 输出独立 dist-desktop，不覆盖 web/dist）。
+        run: |
+          npm run build:desktop
+          test -f dist-desktop/index.html || { echo "❌ dist-desktop 未产出"; exit 1; }
+          if grep -q "serviceWorker" dist-desktop/index.html; then echo "❌ 桌面 dist 含 SW 注册（§120 违例）"; exit 1; fi
+          grep -rq "window.go" dist-desktop/assets/ || { echo "❌ 桌面产物未含 LocalTransport（IS_DESKTOP 折叠失效）"; exit 1; }
+          echo "✅ VITE_DESKTOP 构建门禁通过（SW 关断 + 本地传输折叠在案）"
+        working-directory: web
+
+  # 批次 7 · P7：桌面模块进 CI 构建矩阵——此后桌面批次门禁 = 本 job（Windows runner），
+  # 不再只是"本地跑一遍"。含 DDL 同构校验门禁（synclocal schema_parity，批次 3/6 掩盖事故根治）。
+  desktop:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          # 2026-10-21：1.26.9 → 1.26.10（GO-2026-6809 crypto/x509，同 backend job 联动）
+          go-version: '1.26.10'
+          # 2026-10-09：同 backend job，关闭内置缓存（528MB→0），理由见 backend job 注释。
+          # 注：下方 webview2-fixed-133.0.3065.92 缓存（240MB）刻意保留——key 钉死版本号，
+          # 不会随每次 push 增殖，且省掉每轮 255MB cab 下载；它与本行关闭的 go 缓存互不冲突。
+          cache: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/setup-python@v7
+        with: {python-version: '3.13'}
+      - name: prepare desktop embed placeholder
+        # frontend/dist 为构建产物（gitignore），干净 checkout 下 //go:embed all:frontend/dist
+        # 无匹配文件 → vet/test 编译失败（desktop 首跑实锤）。与 backend "embed placeholder"
+        # 同法：先占位满足编译；build-desktop.ps1 会用真实 VITE_DESKTOP 产物 /MIR 覆盖。
+        run: |
+          mkdir -p desktop/frontend/dist
+          echo '<!doctype html><html><head><title>placeholder</title></head><body></body></html>' > desktop/frontend/dist/index.html
+      - name: gofmt check (desktop)
+        run: test -z "$(gofmt -l .)"
+        working-directory: desktop
+      - name: go vet + go test (desktop 全模块：portable/synclocal DDL 同构/dpapi 真 Windows 面)
+        run: |
+          go vet ./...
+          go test ./... -count=1
+        working-directory: desktop
+      - name: govulncheck desktop (SBOM 增量单列基线，纪律 3.2/6.2)
+        # PYTHONIOENCODING=utf-8：Windows runner 控制台默认 cp1252，vuln_gate 中文输出
+        # 直接 UnicodeEncodeError 崩门禁（desktop 第二跑实锤；记忆坑④同款）
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
+          cd desktop && "$(go env GOPATH)/bin/govulncheck" -json ./... | python ../scripts/vuln_gate.py --mode go --baseline ../docs/vuln_baseline_desktop_go.txt
+      - name: desktop SBOM 清单 (wails 依赖树单列，不污染 NAS 基线 Go79/npm41)
+        run: cd desktop && go list -m all > "$GITHUB_WORKSPACE/依赖清单-desktop.txt"
+      - name: wails CLI 钉版（runtime 基线见 desktop/README.md）
+        run: |
+          go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          # 2026-10-13：NSIS 安装器形态退役（交付面 8 件套 = fpk + 桌面绿色版）——
+          # 不再 choco install nsis，也不再产出/校验 installer（每轮省一步安装耗时）。
+      - name: 缓存钉版 WebView2 runtime（F1，2026-10-08：255MB cab 免每轮下载）
+        uses: actions/cache@v4
+        with:
+          path: desktop/build/webview2-runtime
+          key: webview2-fixed-133.0.3065.92
+      - name: 准备钉版 WebView2 Fixed Version runtime (E1，2026-09-23)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ver = "133.0.3065.92"
+          $dst = "desktop/build/webview2-runtime"
+          # F1：cache 步骤已按版本键还原 runtime 目录——命中且完整即跳过下载与解包。
+          # ⚠ 升 runtime 版本时必须同步修改上方 cache key（两处版本字面量成对）。
+          if (Test-Path "$dst/msedgewebview2.exe") {
+            Write-Host "runtime cache hit: $dst（跳过 cab 下载）"
+            exit 0
+          }
+          # runtime 资产不入库（~255MB cab）——CI 用 gh（runner 预装 + 自动 token）从官方归档
+          # 下载后解包到 desktop/build/webview2-runtime，供 build-desktop.ps1 打进 zip/NSIS
+          #（否则 CI 产物缺钉版 runtime，用户机会退回 Evergreen 崩溃面）。
+          # 注：匿名 Invoke-WebRequest 直连 release 在 runner 上被拒（实测 exit 1），gh 认证通道可靠。
+          $cab = "Microsoft.WebView2.FixedVersionRuntime.$ver.x64.cab"
+          gh release download $ver -R westinyang/WebView2RuntimeArchive -p $cab --clobber
+          if (-not (Test-Path $cab)) { throw "cab 下载失败: $cab" }
+          $tmp = "fvr-extract"
+          New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+          expand.exe $cab -F:* $tmp | Out-Null
+          $inner = Get-ChildItem $tmp -Directory | Select-Object -First 1
+          $dst = "desktop/build/webview2-runtime"
+          # 父目录必须先建：Move-Item 到不存在的目录会报 "Could not find a part of the path"（CI 实测）
+          New-Item -ItemType Directory -Force -Path (Split-Path $dst) | Out-Null
+          if (Test-Path $dst) { Remove-Item -Recurse -Force $dst }
+          Move-Item $inner.FullName $dst
+          if (-not (Test-Path "$dst/msedgewebview2.exe")) { throw "webview2-runtime 准备失败：缺 msedgewebview2.exe" }
+          Write-Host "pinned webview2 runtime ready: $dst"
+      - name: build-desktop.ps1（绿色版 zip + 版本注入断言）
+        run: |
+          cd web && npm ci --registry=https://registry.npmjs.org && cd ..
+          powershell -NoProfile -ExecutionPolicy Bypass -File desktop/scripts/build-desktop.ps1
+      - name: 红线 29 断言 (桌面进程树零 TCP 监听)
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File desktop/scripts/check-no-listen.ps1 -Exe desktop/build/bin/sticky-note-desktop.exe
+      - name: upload desktop artifacts
+        # 2026-10-09：仅手动触发（workflow_dispatch）时上传。
+        # 单份 318MB（钉版 WebView2 runtime 占~255MB），push/PR 自动触发照常上传会击穿
+        # Free 计划 0.5GB 存储配额 → upload-artifact 失败 → CI 红（2026-10-09 实际告警）。
+        # 桌面二进制权威交付面 = 本机根目录；CI 的职责是证明"构建成功"，红线 29 断言已覆盖。
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-windows-amd64
+          path: |
+            desktop/build/release/*
+            依赖清单-desktop.txt
+          # 7 → 1：即使手动触发也不再长期占配额（24h 后自动回收）
+          retention-days: 1

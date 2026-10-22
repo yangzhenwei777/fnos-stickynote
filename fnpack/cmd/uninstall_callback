@@ -1,0 +1,69 @@
+#!/bin/bash
+
+### 卸载后钩子：双保险删除数据
+### fnOS 1.2+ TRIM_PKGVAR 为真实路径且 callback 阶段仍可用，直接删除
+### v21.52 P4 审计修复：与 uninstall_init 一致的精确白名单 + realpath 校验。
+
+DEBUG_LOG="${TRIM_PKGVAR}/logs/uninstall_debug.log"
+umask 077
+mkdir -p "$(dirname "${DEBUG_LOG}")" 2>/dev/null || true
+
+delete_choice="no"
+[ "${wizard_data_action}" = "delete" ] && delete_choice="yes"
+[ "${wizard_delete_data}" = "yes" ] || [ "${wizard_delete_data}" = "true" ] && delete_choice="yes"
+
+echo "[$(date "+%Y-%m-%d %H:%M:%S")] callback start, choice=${delete_choice}, PKGVAR=[${TRIM_PKGVAR}]" >> "${DEBUG_LOG}"
+
+if [ "${delete_choice}" = "yes" ]; then
+    PKGVAR="${TRIM_PKGVAR}"
+    case "${PKGVAR}" in
+        /vol[0-9]*/@appdata/stickynote)
+            ;;
+        *)
+            echo "callback: SAFETY 非法应用目录 ${PKGVAR}" >> "${DEBUG_LOG}"
+            exit 0
+            ;;
+    esac
+
+    REAL_PKGVAR="$(realpath -e -- "${PKGVAR}" 2>/dev/null || true)"
+    if [ -z "${REAL_PKGVAR}" ] || [ "$(basename "${REAL_PKGVAR}")" != "stickynote" ]; then
+        echo "callback: SAFETY realpath/目录名校验失败 ${PKGVAR}" >> "${DEBUG_LOG}"
+        exit 0
+    fi
+
+    if [ -d "${REAL_PKGVAR}" ]; then
+        rm -rf -- "${REAL_PKGVAR}"
+        if [ -d "${REAL_PKGVAR}" ]; then
+            echo "callback: DELETE FAILED ${REAL_PKGVAR}" >> "${DEBUG_LOG}"
+        else
+            echo "callback: deleted ${REAL_PKGVAR}" >> "${DEBUG_LOG}"
+        fi
+    else
+        echo "callback: ${REAL_PKGVAR} 不存在（可能 init 已删）" >> "${DEBUG_LOG}"
+    fi
+
+    # M-01：升级备份落在 data-share（非 PKGVAR），含全库 + .jwt_secret，卸载删数据须一并清。
+    SHARE_ROOT="$(echo "${TRIM_DATA_SHARE_PATHS}" | cut -d: -f1)"
+    if [ -n "${SHARE_ROOT}" ] && [ -d "${SHARE_ROOT}" ]; then
+        REAL_SHARE="$(realpath -e -- "${SHARE_ROOT}" 2>/dev/null || true)"
+        if [ -n "${REAL_SHARE}" ]; then
+            for bk in "${REAL_SHARE}"/sticky-note-upgrade-backup.*; do
+                [ -e "${bk}" ] || continue
+                rbk="$(realpath -e -- "${bk}" 2>/dev/null || true)"
+                [ -n "${rbk}" ] || continue
+                case "$(basename "${rbk}")" in
+                    sticky-note-upgrade-backup.*)
+                        rm -rf -- "${rbk}" && echo "callback: removed upgrade backup ${rbk}" >> "${DEBUG_LOG}"
+                        ;;
+                    *)
+                        echo "callback: SKIP non-upgrade-backup path ${rbk}" >> "${DEBUG_LOG}"
+                        ;;
+                esac
+            done
+        fi
+    fi
+else
+    echo "callback: 保留数据" >> "${DEBUG_LOG}"
+fi
+
+exit 0

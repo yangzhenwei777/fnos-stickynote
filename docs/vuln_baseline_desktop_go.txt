@@ -1,0 +1,10 @@
+# Desktop（Wails 壳）Go 漏洞基线 —— vuln_gate.py --mode go 白名单（批次 7 建立）
+# 工具：govulncheck v1.6.0 -json ./...（CI: desktop job，工作目录 desktop/）
+# 与 NAS 基线（docs/vuln_baseline_go.txt）**分列单**：wails 依赖树不污染服务端 Go 79 基线，
+# 两线各自只拦新增（纪律 3.2 / 6.2 治理五字段约定同台账）。
+# 建立时点（2026-09-20，wails v2.16.0 + desktop/go.sum）：govulncheck 实测
+# 唯一 finding=GO-2026-5932（模块级公告，trace 无符号调用链——x/crypto/openpgp
+# "不再维护"公告，无修复版本；与 NAS 基线 docs/vuln_baseline_go.txt:236 同一事项
+# 同口径挂账，桌面侧仅用 pbkdf2/hkdf，openpgp 不在符号路径）。新增豁免必须带
+#   <ID> | DUE:YYYY-MM-DD | RUNTIME:yes/no | REASON:<接受原因> | OWNER:<责任人> | NOTE:<备注>
+GO-2026-5932 | DUE:2026-12-31 | RUNTIME:no | REASON:模块级公告无符号调用链（桌面仅用 x/crypto pbkdf2/hkdf，openpgp 不在路径）；无修复版本 | OWNER:项目维护者 | NOTE:与 NAS 基线同项同口径（v21.93 存量补齐同源），统一复查 2026-12-31
