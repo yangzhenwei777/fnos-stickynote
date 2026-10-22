@@ -16,7 +16,7 @@
 ## 2.0.0
 
 - First public-facing stable baseline.
-- Rich-text notes, tags, full-text search, encryption, TOTP, multi-user isolation.
+- Rich-text notes, full-text search, encryption, TOTP, multi-user isolation.
 - fnOS FPK packaging and Windows desktop client.
 
 Earlier changes are summarized in GitHub Releases.

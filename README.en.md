@@ -1,13 +1,12 @@
 # Sticky note
 
-A lightweight, polished multi-user note-taking app for fnOS NAS (home/team use). Rich-text editing, tags, full-text search, note encryption, TOTP two-factor auth, and per-user data isolation. It can be deployed as an fnOS FPK app, a standalone binary, or a Windows desktop client.
+A lightweight, polished multi-user note-taking app for fnOS NAS (home/team use). Rich-text editing, full-text search, note encryption, TOTP two-factor auth, and per-user data isolation. It can be deployed as an fnOS FPK app, a standalone binary, or a Windows desktop client.
 
 Current version: **2.2.0**
 
 ## Features
 
 - **Rich-text editor**: Tiptap WYSIWYG with headings, bold, italic, underline, strikethrough, quotes, code blocks, lists, colors, images, and tables
-- **Tags**: exact-match filtering and sorting
 - **Full-text search**: SQLite FTS5 with LIKE fallback for short queries
 - **Note encryption**: AES-256-GCM + PBKDF2 (600,000 iterations) + bcrypt; encrypted notes never persist plaintext
 - **Two-factor auth**: TOTP + recovery codes
