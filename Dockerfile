@@ -26,7 +26,9 @@ RUN apk add --no-cache ca-certificates tzdata
 RUN adduser -D -u 1000 sticky-note
 WORKDIR /app
 COPY --from=server-build /sticky-note /app/sticky-note
-RUN chown -R sticky-note:sticky-note /app
+# /app/data 必须先存在且归 sticky-note 所有：VOLUME 挂载时卷初始化为镜像内目录属主，
+# 缺失则卷根归 root，非 root 启动 mkdir logs 直接 FATAL（冒烟 gate 实抓缺陷）
+RUN mkdir -p /app/data && chown -R sticky-note:sticky-note /app
 # OCI 标准标签（docker inspect / Docker Hub 详情页可见；值由 CI build-args 注入）
 ARG VERSION=dev
 ARG BUILD_TIME=unknown
