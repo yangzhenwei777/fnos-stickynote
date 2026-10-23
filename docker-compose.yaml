@@ -1,0 +1,20 @@
+version: '3.8'
+services:
+  sticky-note:
+    # 发布面镜像（Docker Hub：davyang/sticky-note，CI tag v* 自动发布）——用法：
+    #   STICKY_NOTE_VERSION=$(cat VERSION) docker compose up -d
+    # 纪律：生产消费必须钉具体版本，禁用 :latest 显式消费；镜像随 VERSION 递增
+    image: davyang/sticky-note:${STICKY_NOTE_VERSION:-2.2.0}
+    pull_policy: always
+    container_name: sticky-note
+    ports:
+      - "13389:13389"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - PORT=13389
+      - DATA_DIR=/app/data
+      # JWT_SECRET 留空即可：程序未设置时自动生成随机密钥并持久化到 .jwt_secret（0600）
+      # 如需固定密钥（多副本共享会话），请自行生成：openssl rand -hex 32
+      - TZ=Asia/Shanghai
+    restart: unless-stopped
