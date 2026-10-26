@@ -2,7 +2,7 @@
 
 A lightweight, polished multi-user note-taking app for fnOS NAS (home/team use). Rich-text editing, full-text search, note encryption, TOTP two-factor auth, and per-user data isolation. It can be deployed as an fnOS FPK app, a standalone binary, or a Windows desktop client.
 
-Current version: **2.2.0**
+Current version: **2.2.1** (user-feedback maintenance release: preview empty-line height / TXT import line-by-line paragraphs / Markdown paste single-insert / import into current folder / backup job clearing)
 
 ## Features
 
@@ -26,25 +26,6 @@ Current version: **2.2.0**
 - **Security**: bluemonday XSS sanitization, CSP, three-layer anti-brute-force, external images stripped
 - **Desktop**: Wails v2 + Vue 3 + local SQLite
 
-## Docker deployment
-
-The image is published on Docker Hub: `davyang/sticky-note`, available for `linux/amd64` and `linux/arm64`.
-
-```bash
-docker run -d --name sticky-note \
-  -p 13389:13389 \
-  -v sticky-note-data:/app/data \
-  -e TZ=Asia/Shanghai \
-  davyang/sticky-note:2.2.0
-```
-
-Or use the `docker-compose.yaml` in this repo (pinned to 2.2.0 by default). Notes:
-
-- **Pin an explicit version tag in production** (e.g. `2.2.0`); `latest` is for quick trial only
-- **Persistence**: all data lives in `/app/data`; back up by stopping the container and copying that directory
-- **Container form**: the fnOS unix-socket gateway mode is disabled inside containers — pure TCP direct access (gateway mode is exclusive to the fpk deployment)
-- **Upgrade**: bump the version, then `docker compose pull && docker compose up -d` (volume compatible, no migration)
-- Visit `http://<host>:13389` to register; the first user becomes admin
 ## Quick Start
 
 ### Run the binary

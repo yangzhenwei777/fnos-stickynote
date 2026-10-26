@@ -2,7 +2,7 @@
 
 一款轻量、精美的多用户笔记应用，面向飞牛 NAS（fnOS）家庭/团队场景。支持富文本编辑、全文搜索、笔记加密、两步验证（TOTP）和多用户数据隔离，可部署为 fnOS FPK 应用、独立二进制或 Windows 桌面客户端。
 
-当前版本：**2.2.0**
+当前版本：**2.2.1**（用户反馈修复维护版：预览空行高度 / TXT 导入逐行成段 / Markdown 粘贴单通道 / 导入落当前文件夹 / 备份执行记录清除）
 
 ## 功能特性
 
@@ -26,25 +26,6 @@
 - **安全**：bluemonday 双端 XSS 消毒、CSP、防爆破三层（IP / 用户名 / 账号）、外链图片剥除
 - **桌面端**：Wails v2 + Vue 3 + 本地 SQLite
 
-## Docker 部署
-
-镜像已发布到 Docker Hub：`davyang/sticky-note`，支持 `linux/amd64` 与 `linux/arm64`。
-
-```bash
-docker run -d --name sticky-note \
-  -p 13389:13389 \
-  -v sticky-note-data:/app/data \
-  -e TZ=Asia/Shanghai \
-  davyang/sticky-note:2.2.0
-```
-
-或使用仓库内 `docker-compose.yaml`（默认钉版本 2.2.0）。注意事项：
-
-- **生产环境钉具体版本 tag**（如 `2.2.0`），`latest` 仅便于快速体验
-- **数据持久化**：数据在 `/app/data`；备份 = 停止容器后备份该目录（SQLite + 附件 + JWT 密钥均在其中）
-- **容器形态**：容器内 fnOS unix socket 网关模式禁用，走纯 TCP 直连（网关模式仅限 fpk 部署形态）
-- **升级**：递增版本号后 `docker compose pull && docker compose up -d`（数据卷兼容，无需迁移）
-- 首次访问 `http://<宿主机>:13389` 注册账号，首个注册用户自动成为管理员
 ## 快速开始
 
 ### 直接运行二进制
