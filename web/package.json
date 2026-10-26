@@ -62,6 +62,7 @@
     "@vite-pwa/assets-generator": "^1.0.2"
   },
   "overrides": {
-    "fast-uri": "3.1.8"
+    "fast-uri": "3.1.9",
+    "serialize-javascript": "7.1.3"
   }
 }
