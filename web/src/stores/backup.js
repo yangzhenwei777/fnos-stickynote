@@ -46,6 +46,19 @@ export const useBackupStore = defineStore('backup', () => {
     } catch { /* 静默 */ }
   }
 
+  // v2.2.1 清除执行记录（终态：成功/失败/已中断；运行中后端保留）。
+  // 返回 {ok, deleted} 供 UI 提示；失败时提示并保持列表原状。
+  async function clearJobs() {
+    try {
+      const { data } = await backupApi.clearJobs()
+      await loadJobs()
+      return { ok: true, deleted: data.deleted ?? 0 }
+    } catch (e) {
+      message.errorOnce(e.response?.data?.error || '清除执行记录失败')
+      return { ok: false, deleted: 0 }
+    }
+  }
+
   async function loadStatus() {
     try {
       const { data } = await backupApi.getBackupStatus()
@@ -200,7 +213,7 @@ export const useBackupStore = defineStore('backup', () => {
 
   return {
     targets, snapshots, jobs, running, currentJob, enabledTargets,
-    refresh, loadTargets, loadSnapshots, loadJobs, loadStatus,
+    refresh, loadTargets, loadSnapshots, loadJobs, loadStatus, clearJobs,
     createTarget, updateTarget, removeTarget, test, runBackup, verify, deleteSnapshot, download, exportKey,
     restore, waitForRestoreDone, discover
   }

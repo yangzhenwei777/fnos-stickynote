@@ -259,6 +259,18 @@ func InterruptStaleJobs() (int, error) {
 	return int(n), nil
 }
 
+// ClearBackupJobs v2.2.1 清除已终结的执行记录（SUCCESS/FAILED/INTERRUPTED），
+// 返回删除行数。运行中的（STARTING/RUNNING）一律保留——fail-closed：这些行被删
+// 会导致前端轮询 jobs/:id 404、执行状态面板失真，且正在执行的行为本身需要留痕。
+func ClearBackupJobs() (int, error) {
+	res, err := database.DB.Exec(`DELETE FROM backup_jobs WHERE status IN ('SUCCESS','FAILED','INTERRUPTED')`)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
+}
+
 // DeleteBackupPlacement 删除 (backup_id,target_id) 放置记录（远端已删除后清本地态）。
 func DeleteBackupPlacement(backupID string, targetID int64) error {
 	_, err := database.DB.Exec("DELETE FROM backup_placements WHERE backup_id=? AND target_id=?", backupID, targetID)

@@ -71,6 +71,23 @@ func ImportFile(c *gin.Context) {
 		return
 	}
 
+	// v2.2.1：Web 端补齐「导入落当前文件夹」。v21.213 只修了桌面路径（当时前端
+	// FormData 已带 folder_id，但注释明言「Web 端 handler 忽略该字段」=本处一直
+	// 没接线），用户在 fnOS 网页导入恒落「我的笔记」。语义对齐 note.go CreateNote
+	// 与前端 transport.folderOfForm：缺失/空/"0" → nil（默认文件夹，老客户端零
+	// 影响）；非数字/负数 → 400 拒绝（fail-closed，防脏数据静默落错位置）。
+	var folderID *int64
+	if v := strings.TrimSpace(c.Request.FormValue("folder_id")); v != "" {
+		n, ferr := strconv.ParseInt(v, 10, 64)
+		if ferr != nil || n < 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "无效的文件夹参数"})
+			return
+		}
+		if n > 0 {
+			folderID = &n
+		}
+	}
+
 	// v21.58 P1：导入与创建笔记一致受配额约束（max_notes_per_user，事务内判断）
 	// v21.66 P1-5：n >= 0 与 note.go 对齐，0 = 不限（此前 n > 0 使 0 被误判为默认 1000）
 	limit := 1000
@@ -81,10 +98,15 @@ func ImportFile(c *gin.Context) {
 	}
 	// P2 批次1（§129 门禁）：导入也是建笔记——委托 app Facade 同产 ChangeLog CREATE 事件
 	// （否则导入的笔记永远进不了同步事件流，桌面端 pull 不可见）。
-	note, err := app.NewServerNoteService(limit).CreateNote(userID.(int64), title, htmlContent, "", nil)
+	// v2.2.1：folderID 透传（归属校验在 app 层，ErrInvalidFolder 同 note.go 口径）。
+	note, err := app.NewServerNoteService(limit).CreateNote(userID.(int64), title, htmlContent, "", folderID)
 	if err != nil {
 		if errors.Is(err, model.ErrQuotaExceeded) {
 			c.JSON(http.StatusForbidden, gin.H{"error": fmt.Sprintf("已达到笔记数量上限（%d 篇），请先清理不需要的笔记", limit)})
+			return
+		}
+		if errors.Is(err, model.ErrInvalidFolder) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "文件夹不存在"})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建笔记失败"})
@@ -127,7 +149,7 @@ func extractTitle(text string, filename string) string {
 	return notetext.ExtractTitle(text, filename)
 }
 
-// txtToHTML 纯文本 → 按空行分段，<p> 包裹。
+// txtToHTML 纯文本 → 每行一个 <p>，空行保留空段落（v2.2.1 逐行成段）。
 func txtToHTML(text string) string {
 	return notetext.TextToHTML(text)
 }

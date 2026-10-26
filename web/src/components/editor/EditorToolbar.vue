@@ -503,14 +503,17 @@
 // 评审 B4-4c：工具栏呈现层与「纯 editor 命令」处理器由 TiptapEditor.vue 外提至此。
 // 拆分纪律：行为逐字节不变；editor 实例与工具栏重渲染 tick 由父组件传入（editor 非响应式，
 // 事务发生后父组件递增 toolbarTick → 本组件 computed 依赖 props.tick 失效 → 重渲染 → 模板内
-// isActive/can 重算）。B4-4c 阶段B：格式刷状态机、插入链接、图片上传（文件 I/O + 粘贴含 Markdown）
+// isActive/can 重算）。B4-4c 阶段B：格式刷状态机、插入链接、图片上传（文件 I/O + 粘贴兜底）
 // 均已内聚进本组件（自订阅 editor selectionUpdate/blur + view.dom Esc/paste）。
+// v2.2.1（用户反馈 2b）：Markdown 文本粘贴转换迁至 TiptapEditor 的
+// editorProps.handlePaste（官方接管点，防双插），本组件仅保留图片上传兜底。
 import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
 import ColorPicker from '../ColorPicker.vue'
 import { message } from '@/utils/message'
 import api from '@/api/request'
 import { IC } from './icons'
 import { FONTS, FONT_SIZES, IMAGE_MAX_EDGE, IMAGE_SKIP_TYPES } from './constants'
+import { isMarkdownPaste } from './pasteMarkdown'
 
 const props = defineProps({
   editor: {
@@ -823,21 +826,12 @@ function handlePaste(event) {
   const items = event.clipboardData?.items
   if (!items) return
 
-  // v20.1: Markdown 粘贴自动转换 —— 检测纯文本粘贴，转常见 MD 语法为 HTML
-  for (const item of items) {
-    if (item.type === 'text/plain') {
-      const text = event.clipboardData.getData('text/plain')
-      if (text && /^[#*->`[].*|^`.+`$/m.test(text)) {
-        event.preventDefault()
-        const html = mdToHtml(text)
-        if (html !== text) {
-          props.editor?.chain().focus().insertContent(html).run()
-          return
-        }
-      }
-      break
-    }
-  }
+  // v2.2.1（用户反馈 2b）：Markdown 文本转换已迁至 TiptapEditor 的
+  // editorProps.handlePaste（官方钩子，防双插）。此处仅兜底图片上传；
+  // 含 Markdown 文本的混合粘贴直接跳过，保持迁移前「Markdown 优先、图片忽略」语义，
+  // 也避免 Markdown 已被钩子插入后图片再叠加一份。
+  const text = event.clipboardData?.getData('text/plain')
+  if (text && isMarkdownPaste(text)) return
 
   for (const item of items) {
     if (item.type.indexOf('image') === 0) {
@@ -849,42 +843,6 @@ function handlePaste(event) {
       break
     }
   }
-}
-
-// mdToHtml 将常见 Markdown 行内/块级语法转为 HTML（零依赖纯正则转换）。
-function mdToHtml(text) {
-  let html = text
-  // 代码块（```...```）转 <pre><code>
-  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code class="language-$1">$2</code></pre>')
-  // 行内代码
-  html = html.replace(/`([^`]+)`/g, '<code>$1</code>')
-  // 标题
-  html = html.replace(/^#### (.+)$/gm, '<h4>$1</h4>')
-  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>')
-  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>')
-  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>')
-  // 粗体+斜体
-  html = html.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
-  // 粗体
-  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-  // 斜体
-  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>')
-  // 删除线
-  html = html.replace(/~~(.+?)~~/g, '<s>$1</s>')
-  // 链接
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
-  // 任务清单（- [ ] / - [x]）
-  html = html.replace(/^- \[([ xX])\] (.+)$/gm, (m, c, t) => {
-    const checked = c.toLowerCase() === 'x'
-    return `<li data-type="taskItem" data-checked="${checked}"><label><input type="checkbox"${checked ? ' checked' : ''}></label><div><p>${t}</p></div></li>`
-  })
-  // 无序列表
-  html = html.replace(/^- (.+)$/gm, '<li>$1</li>')
-  // 任务清单项包成 taskList
-  html = html.replace(/(<li data-type="taskItem"[\s\S]*?<\/li>)/g, '<ul data-type="taskList">$1</ul>')
-  // 普通列表项包成 ul（精确匹配 <li>，不会命中带属性的 taskItem）
-  html = html.replace(/(<li>[\s\S]*?<\/li>)/g, '<ul>$1</ul>')
-  return html
 }
 
 // 图片前端压缩：canvas 缩至最长边 1600px 再上传（手机原图一张几 MB，拖慢笔记加载）

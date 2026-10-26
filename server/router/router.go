@@ -189,6 +189,8 @@ func Setup(uploadDir string, webDir string) http.Handler {
 		admin.POST("/backup/targets/:id/test", handler.TestBackupTarget)
 		admin.POST("/backup/targets/:id/run", handler.RunBackupNow)
 		admin.GET("/backup/jobs", handler.ListBackupJobs)
+		// v2.2.1：执行记录面板【清除记录】（只清终态记录，运行中保留）
+		admin.DELETE("/backup/jobs", handler.ClearBackupJobs)
 		admin.GET("/backup/jobs/:id", handler.GetBackupJob)
 		admin.GET("/backup/snapshots", handler.ListBackupSnapshots)
 		// P1 批次3（ADR-003 R3）：附件 sha256 回填进度（数据中心可见）。

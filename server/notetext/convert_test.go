@@ -109,8 +109,21 @@ func TestConvertTxtEscapesTags(t *testing.T) {
 	if strings.Contains(content, "<script") {
 		t.Errorf("txt 分支未转义: %q", content)
 	}
-	if !strings.Contains(content, "<br>") {
-		t.Errorf("txt 分支应换行分段: %q", content)
+	if !strings.Contains(content, "<p>第一行</p>") || !strings.Contains(content, "<p>第二行") {
+		t.Errorf("txt 分支应逐行独立成段: %q", content)
+	}
+}
+
+func TestTextToHTMLPerLineParagraphs(t *testing.T) {
+	// v2.2.1（用户反馈 2a）契约锁定：每行一个 <p>、空行保留空段落、CRLF 兼容。
+	// 旧实现段内 <br> 连接导致连续行共享一个 <p>，块级格式命令作用整段。
+	got := TextToHTML("第一行\n第二行\n\n第三行\r\n")
+	want := "<p>第一行</p>\n<p>第二行</p>\n<p></p>\n<p>第三行</p>"
+	if got != want {
+		t.Errorf("TextToHTML = %q, want %q", got, want)
+	}
+	if TextToHTML("") != "<p></p>" {
+		t.Errorf("空文本应 <p></p>")
 	}
 }
 

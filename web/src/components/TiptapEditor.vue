@@ -50,6 +50,8 @@ import { lowlight } from 'lowlight/lib/common.js'
 import EditorToolbar from './editor/EditorToolbar.vue'
 import { EMIT_DEBOUNCE, EMIT_MAX_WAIT } from './editor/constants'
 import { FontFamily, FontSize, ResizableImage, IndentParagraph, StickyTaskItem } from './editor/extensions'
+// v2.2.1（用户反馈 2b）：Markdown 粘贴转换迁移至官方 editorProps.handlePaste（防双插）
+import { isMarkdownPaste, mdToHtml } from './editor/pasteMarkdown'
 
 const props = defineProps({
   modelValue: {
@@ -142,6 +144,23 @@ function computeToolbarSig() {
 // ⚠️ 升级 Tiptap 时须对照官方 task-item nodeView 复核本覆写（交付说明挂账）。
 
 const editor = useEditor({
+  editorProps: {
+    // v2.2.1（用户反馈 2b：粘贴双插修复）——Markdown 文本粘贴的官方接管点。
+    // 旧实现挂在 EditorToolbar 的 DOM paste 监听上，PM 默认粘贴先执行、preventDefault
+    // 拦不住 → 纯文本与转换结果各插一份。本钩子在 PM 默认插入**之前**调用，返回
+    // true 即接管（阻止默认），由这里单份插入转换结果；未命中触发条件或转换无变化
+    // 时返回 false 放行默认粘贴。图片粘贴仍在 EditorToolbar 的 DOM 监听（PM 默认
+    // 不处理文件，无双插问题）。
+    handlePaste: (view, event) => {
+      const text = event.clipboardData?.getData('text/plain')
+      if (!text || !isMarkdownPaste(text)) return false
+      const html = mdToHtml(text)
+      if (html === text) return false
+      event.preventDefault()
+      editor.value?.chain().focus().insertContent(html).run()
+      return true
+    }
+  },
   extensions: [
     // v21.109 tiptap 3.x：StarterKit 默认内置 Link/Underline/ListKeymap——本项目对
     // Link（openOnClick/HTMLAttributes）与 Underline（保持独立配置位）单独 configure，
@@ -200,8 +219,9 @@ const editor = useEditor({
       toolbarTick.value++
     }
   },
-  // 注：粘贴监听（图片上传 + Markdown 转换）与格式刷 Esc/selectionUpdate/blur 已随 B4-4c 阶段B
-  //     迁入 EditorToolbar.vue 自订阅（onMounted 注册、onBeforeUnmount 解绑）。
+  // 注：v2.2.1 起 Markdown 文本粘贴转换经上方 editorProps.handlePaste 官方钩子处理；
+  //     图片粘贴兜底与格式刷 Esc/selectionUpdate/blur 仍在 EditorToolbar.vue 自订阅
+  //     （onMounted 注册、onBeforeUnmount 解绑）。
   onDestroy: () => {
     // v21.85：卸载前把防抖窗口内的未发内容同步给父组件，防止编辑丢失
     flushContent()

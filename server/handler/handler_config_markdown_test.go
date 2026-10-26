@@ -174,10 +174,13 @@ func TestMarkdownHelpers(t *testing.T) {
 			t.Errorf("应回退文件名, got %q", got)
 		}
 	})
-	t.Run("txtToHTML 空行分段", func(t *testing.T) {
+	t.Run("txtToHTML 逐行成段（v2.2.1 每行一 p）", func(t *testing.T) {
 		got := txtToHTML("第一行\n第二行\n\n新段落 <script>alert(1)</script>")
-		if !strings.Contains(got, "<p>第一行<br>第二行</p>") {
-			t.Errorf("分段不符: %s", got)
+		if !strings.Contains(got, "<p>第一行</p>") || !strings.Contains(got, "<p>第二行</p>") {
+			t.Errorf("应逐行独立成段: %s", got)
+		}
+		if !strings.Contains(got, "<p></p>") {
+			t.Errorf("空行应保留空段落: %s", got)
 		}
 		if strings.Contains(got, "<script>") {
 			t.Error("txt 导入应转义脚本标签")

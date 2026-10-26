@@ -38,24 +38,21 @@ func ExtractTitle(text string, filename string) string {
 	return strings.TrimSuffix(name, filepath.Ext(name))
 }
 
-// TextToHTML 纯文本 → 按空行分段，<p> 包裹。
+// TextToHTML 纯文本 → 每行一个 <p>，空行保留空段落（首尾空白行仍裁剪）。
+// v2.2.1 修复（用户反馈 2a）：旧实现按空行分段、段内行以 <br> 连接，连续无空行的
+// TXT 全部挤进同一 <p>——编辑器对段落施加块级格式（如设为标题）会作用于整段。
+// 改为逐行独立段落，行级格式化粒度与编辑器一致；空行输出空 <p>，与预览态
+// p:empty 撑高规则配套，编辑/预览行数对齐。
 func TextToHTML(text string) string {
 	lines := strings.Split(strings.TrimSpace(text), "\n")
-	var paras []string
-	var buf []string
+	paras := make([]string, 0, len(lines))
 	for _, line := range lines {
 		t := strings.TrimSpace(line)
 		if t == "" {
-			if len(buf) > 0 {
-				paras = append(paras, "<p>"+strings.Join(buf, "<br>")+"</p>")
-				buf = nil
-			}
+			paras = append(paras, "<p></p>")
 		} else {
-			buf = append(buf, EscapeHTML(t))
+			paras = append(paras, "<p>"+EscapeHTML(t)+"</p>")
 		}
-	}
-	if len(buf) > 0 {
-		paras = append(paras, "<p>"+strings.Join(buf, "<br>")+"</p>")
 	}
 	if len(paras) == 0 {
 		return "<p></p>"

@@ -429,6 +429,11 @@ html[data-theme="dark"] .clear-tag:hover {
      右侧大片留白（用户实机反馈，与 206 及之前的观感不一致）。
      本项目是笔记应用而非阅读器，内容区应占满可用宽度。 */
   line-height: 1.8;
+  /* v2.2.1：修复预览态长英文串（Base64/URL 等无空格串）不换行溢出——
+     编辑态由 prosemirror-view 注入 word-break:break-word 兜底，v-html 静态
+     渲染无此默认样式。anywhere 仅在放不下时才断行（同 v21.207 摘要口径），
+     普通英文单词不会被从中间截断；pre 代码块仍走 overflow-x:auto 横向滚动。 */
+  overflow-wrap: anywhere;
   /* v21.48：与 .view-content 一致的字号/颜色（编辑内预览渲染一致性） */
   font-size: 16px;
   color: var(--text-primary);
@@ -657,6 +662,11 @@ html[data-theme="dark"] .clear-tag:hover {
   /* v21.169：移除 207 改版新增的 max-width: 720px（同 .note-preview-content）。
      206 及之前无此限制、内容占满可用宽度；恢复该观感。 */
   line-height: 1.8;
+  /* v2.2.1：修复查看态长英文串（Base64/URL 等无空格串）不换行溢出——
+     v21.207 修复时只覆盖了摘要/标题容器，正文容器被遗漏。
+     anywhere 仅在放不下时才断行，普通英文单词不被从中间截断；
+     pre 代码块仍走 overflow-x:auto 横向滚动（与编辑态一致）。 */
+  overflow-wrap: anywhere;
   font-size: 16px;
   color: var(--text-primary);
   padding: 4px 0;
@@ -688,6 +698,15 @@ html[data-theme="dark"] .clear-tag:hover {
 .view-content :deep(p),
 .note-preview-content :deep(p) {
   margin: 1em 0;
+}
+
+/* v2.2.1（用户反馈 1）：预览态空段落高度塌陷修复——HTML 空块级元素无内容不产生
+   行盒、高度为 0，观感上「预览把编辑器里的空行藏掉了」；编辑态 ProseMirror 对空
+   段落注入尾随 <br> 撑起一行。此处按两容器的 line-height:1.8（16px→28.8px）显式
+   撑起空段落，行数与编辑态逐行对齐。注意：调整 line-height 时需同步本值。 */
+.view-content :deep(p:empty),
+.note-preview-content :deep(p:empty) {
+  min-height: 1.8em;
 }
 
 .view-content :deep(ul),

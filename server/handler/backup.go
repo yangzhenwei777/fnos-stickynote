@@ -262,6 +262,21 @@ func ListBackupJobs(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"jobs": jobs})
 }
 
+// ClearBackupJobs v2.2.1 清除执行记录（管理后台「执行记录」面板【清除记录】按钮）。
+// fail-closed：只清已终结记录（SUCCESS/FAILED/INTERRUPTED），运行中的
+// （STARTING/RUNNING）保留（前端轮询依赖 + 执行留痕），响应附保留数供 UI 提示。
+func ClearBackupJobs(c *gin.Context) {
+	if !managerReady(c) {
+		return
+	}
+	deleted, err := model.ClearBackupJobs()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "清除执行记录失败"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "已清除执行记录", "deleted": deleted})
+}
+
 func ListBackupSnapshots(c *gin.Context) {
 	if !managerReady(c) {
 		return

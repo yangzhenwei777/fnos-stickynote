@@ -41,6 +41,12 @@ export function listJobs() {
   return api.get('/backup/jobs')
 }
 
+// v2.2.1 清除执行记录：只清已终结记录（成功/失败/已中断），运行中保留。
+// 返回 {message, deleted}；deleted 为实际清除条数。
+export function clearJobs() {
+  return api.delete('/backup/jobs')
+}
+
 export function listSnapshots() {
   return api.get('/backup/snapshots')
 }
