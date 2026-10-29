@@ -345,16 +345,18 @@ jobs:
             if ($len -gt 100MB) { Write-Host "runtime cache hit: $dst ($([math]::Round($len/1MB,1)) MB)"; exit 0 }
             Remove-Item $dst -Force
           }
-          # 首选项目私有 Release 上预裁剪好的 runtime（与本地交付包同一份产物，确定性最好）。
-          # 前置条件：推送前需上传 webview2-runtime-<ver>.tar.xz 到私有仓 Release runtime-<ver>。
-          try {
-            gh release download "runtime-$ver" -R yangzhenwei777/fnos-notepad -p "webview2-runtime-$ver.tar.xz" --clobber
-            if (Test-Path "webview2-runtime-$ver.tar.xz") {
+          # 首选本仓 Release 上预裁剪好的 runtime（与交付包同一份产物，确定性最好）。
+          # 私仓与公开仓各上传一份 Release runtime-<ver>（技术资产，非版本发布）。
+          # 回退顺序：本仓 → 私有仓（公开仓 token 无权限，仅私仓命中）→ runner 已安装版本。
+          $repos = @("${{ github.repository }}", "yangzhenwei777/fnos-notepad") | Select-Object -Unique
+          foreach ($r in $repos) {
+            Remove-Item "webview2-runtime-$ver.tar.xz" -Force -ErrorAction SilentlyContinue
+            gh release download "runtime-$ver" -R $r -p "webview2-runtime-$ver.tar.xz" --clobber 2>$null
+            if ($LASTEXITCODE -eq 0 -and (Test-Path "webview2-runtime-$ver.tar.xz")) {
               Move-Item "webview2-runtime-$ver.tar.xz" $dst -Force
-              if ((Get-Item $dst).Length -gt 100MB) { Write-Host "runtime asset ready: $dst"; exit 0 }
+              if ((Get-Item $dst).Length -gt 100MB) { Write-Host "runtime asset ready from $r : $dst"; exit 0 }
             }
-          } catch {
-            Write-Host "项目 runtime 资产不可用（$($_.Exception.Message)），尝试 runner 已安装版本"
+            Write-Host "runtime 资产不可用（$r），尝试下一来源"
           }
           # 回退：runner 自带的固定版 156 目录 → 交给 build-desktop.ps1 裁剪打包。
           $pf = Join-Path ${env:ProgramFiles(x86)} "Microsoft\EdgeWebView\Application\$ver"
@@ -365,7 +367,7 @@ jobs:
             Write-Host "using runner installed runtime: $pf"
             exit 0
           }
-          throw "156 runtime 不可用：请上传 webview2-runtime-$ver.tar.xz 到私有 Release runtime-$ver（或设置 STICKYNOTE_WV2_SRC）"
+          throw "156 runtime 不可用：请上传 webview2-runtime-$ver.tar.xz 到本仓或私有仓 Release runtime-$ver（或设置 STICKYNOTE_WV2_SRC）"
       - name: build-desktop.ps1（绿色版 zip + 版本注入断言）
         run: |
           cd web && npm ci --registry=https://registry.npmjs.org && cd ..
