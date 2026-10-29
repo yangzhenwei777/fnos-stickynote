@@ -2,6 +2,7 @@ package handler
 
 import (
 	"stickynote/model"
+	"stickynote/notetext"
 	"strings"
 	"testing"
 )
@@ -17,7 +18,7 @@ func BenchmarkBuildNoteMD(b *testing.B) {
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = buildNoteMD(n)
+		_ = buildNoteMD(n, nil) // v2.2.2：nil resolver 保持 bench 原口径（不触发图片读盘）
 	}
 }
 
@@ -29,6 +30,6 @@ func BenchmarkSanitizeFilename(b *testing.B) {
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = sanitizeExportFilename(names[i%len(names)])
+		_ = notetext.SanitizeExportFilename(names[i%len(names)])
 	}
 }

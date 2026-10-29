@@ -1,11 +1,11 @@
 ================================================================================
-Sticky note 依赖清单（SBOM）— StickyNote-2.2.0（v? / VERSION 2.2.0）
+Sticky note 依赖清单（SBOM）— StickyNote-2.2.2（v? / VERSION 2.2.2）
 ================================================================================
-生成日期：2026-10-21
+生成日期：2026-10-28
 生成器：scripts/sbom_gate.py --gen（本文件由脚本生成，请勿手改；依赖有变动请重跑并同步交付面副本）
 生成方式：
   Go ：cd server && go list -m all            → 74 行（主模块 + 全部间接依赖）
-  npm：web/package.json 声明区间 + node_modules 实装版本 → 41 项直接依赖（26 dependencies + 15 devDependencies）
+  npm：web/package.json 声明区间 + node_modules 实装版本 → 42 项直接依赖（27 dependencies + 15 devDependencies）
 
 【对比口径】与上一版对比须**逐包比名称与区间**，行数相等不等于零变更；本清单由 `scripts/sbom_gate.py --check` 与权威树交叉核对（CI backend job 常驻）。
 【范围】NAS fpk 交付面（server + web）。desktop 模块（Wails/x-crypto 等）依赖树由 CI 单列 `依赖清单-desktop.txt`（artifact），不入本清单。
@@ -90,9 +90,9 @@ modernc.org/token v1.1.0
 rsc.io/pdf v0.1.1
 
 
-二、npm 直接依赖清单（41 项；名称 / 声明区间 / 实装版本）
+二、npm 直接依赖清单（42 项；名称 / 声明区间 / 实装版本）
 ================================================================================
-[dependencies] 26 项
+[dependencies] 27 项
 @element-plus/icons-vue                      ^2.3.0       2.3.2
 @tiptap/core                                 ^3.31.3      3.32.0
 @tiptap/extension-code-block-lowlight        ^3.31.3      3.32.0
@@ -110,6 +110,7 @@ rsc.io/pdf v0.1.1
 @tiptap/pm                                   ^3.31.3      3.32.0
 @tiptap/starter-kit                          ^3.31.3      3.32.0
 @tiptap/vue-3                                ^3.31.3      3.32.0
+@zumer/snapdom                               ^3.5.0       3.5.0
 axios                                        ^1.7.0       1.20.0
 dompurify                                    ^3.4.13      3.4.17
 element-plus                                 ^2.8.0       2.14.7

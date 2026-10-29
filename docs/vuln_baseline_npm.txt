@@ -1,5 +1,5 @@
 # npm 漏洞基线（vuln_gate.py --mode npm 白名单）
-# 生成：2026-08-06 20:50 ｜ 最后更新：2026-08-27 00:30（v21.81 交付扫描，补挂 glob/nanoid）
+# 生成：2026-08-06 20:50 ｜ 最后更新：2026-10-28（2.2.2 轮，补挂 deepmerge）
 # 工具：npm audit --json --registry=https://registry.npmjs.org
 # 更新方式：运行 `npm audit --json --registry=https://registry.npmjs.org | python3 scripts/vuln_gate.py --mode npm --baseline docs/vuln_baseline_npm.txt`（需 npmjs.org 可达）
 # 规则：CI 中 audit 发现的漏洞，凡 GHSA ID 或包名在本文件内的视为"在案挂账"，不阻断；新增才阻断（纪律 6.2）
@@ -19,6 +19,15 @@
 #   依赖链：vite → postcss → nanoid@3.3.17
 #   可达性：构建期工具链，不进运行时产物；触发条件为自定义 generator 传 size=0，本项目用默认用法不可达
 #   处置：⏳ 挂账（构建期不可达），复核期限 2026-11-30；随下次 vite 升级自然消化
+#
+# 2026-10-28 2.2.2 轮（导出长图功能交付前发版必扫发现）：deepmerge GHSA-gcqx-w48m-w2h4（low，CVSS 5.3，
+#   CWE-1321 原型污染：mergeObject() 未校验 __proto__/constructor 键）
+#   依赖链：vite-plugin-pwa → workbox-build → @rollup/plugin-node-resolve → deepmerge（4 条 audit 命中同一公告）
+#   可达性：构建期工具链，不进 fpk 运行时产物；merge 输入为项目自身源码与 lock 依赖，无攻击者可控输入面
+#   受影响区间 >=4.2.0 <=4.3.1 —— 上游最新 4.3.1 即区间上界，**无修复版可钉**；
+#   npm 唯一建议为 vite-plugin-pwa 降级 0.2.1（semver major，PWA 能力回退不可取）
+#   处置：⏳ 挂账（dev/构建期不可达 + 无上游修复），复核期限 2027-01-31；随 deepmerge 4.3.2+ 发布或
+#   vite-plugin-pwa/workbox 升级自然消化
 #
 # 历史挂账（vite 5 时代，2026-08-06 B 批次升级后已修复，保留记录备查）：
 #   GHSA-4w7w-66w2-5vf9  vite 构建期路径穿越（dev server 优化依赖）→ ✅已修（vite 8.2.1）
@@ -45,4 +54,10 @@ nanoid | DUE:2026-11-30 | RUNTIME:no | REASON:构建期工具链(vite→postcss)
 #   3) 处置纪律：版本已高于 fixed version 的条目（sharp / vite-plugin-pwa / @vite-pwa/assets-generator）
 #      **从基线删除**（纪律 6.2），若将来 audit 再报，由门禁正常阻断并强制复核。
 GHSA-2v37-7h3g-55p8 | DUE:2026-11-30 | RUNTIME:no | REASON:同上，custom generators size=0 死循环 DoS | OWNER:项目维护者
+GHSA-gcqx-w48m-w2h4 | DUE:2027-01-31 | RUNTIME:no | REASON:deepmerge 原型污染，vite-plugin-pwa→workbox-build→@rollup/plugin-node-resolve 构建链；上游 4.3.1 无修复版（区间上界），降级 vite-plugin-pwa 破坏性不可取；构建期无攻击者输入面 | OWNER:项目维护者
+# deepmerge 同公告的 effects 链包名（audit 以链上各包名义各报一条，包名口径须逐条豁免——glob 先例）
+deepmerge | DUE:2027-01-31 | RUNTIME:no | REASON:同上 GHSA-gcqx-w48m-w2h4 | OWNER:项目维护者
+@rollup/plugin-node-resolve | DUE:2027-01-31 | RUNTIME:no | REASON:同上 GHSA-gcqx-w48m-w2h4（依赖 deepmerge 受影响区间） | OWNER:项目维护者
+workbox-build | DUE:2027-01-31 | RUNTIME:no | REASON:同上 GHSA-gcqx-w48m-w2h4（经 @rollup/plugin-node-resolve 链） | OWNER:项目维护者
+vite-plugin-pwa | DUE:2027-01-31 | RUNTIME:no | REASON:同上 GHSA-gcqx-w48m-w2h4（经 workbox-build 链；降级修复方案不可取） | OWNER:项目维护者
 # fast-uri：v21.103 曾用 npm overrides 钉 3.1.6；**196 轮复核发现 3.1.6 自身不可达面已失效**（官方 advisory 要求 >=3.1.8），已把 overrides 升到 3.1.8 根除，挂账条目撤销

@@ -30,6 +30,13 @@ var imgLocalSrcRe = regexp.MustCompile(`^/uploads/`)
 // 中文与引号字体名，导致 SimSun/宋体/"Microsoft YaHei" 全部被剥（v21.88 bug 根因）。
 var fontFamilyRe = regexp.MustCompile(`^[\p{Han}A-Za-z0-9 '"_,\-.]+$`)
 
+// v2.2.2 R2 表格列宽属性值域：colwidth 为纯数字或逗号分隔数字（Tiptap 跨合单元格
+// 序列化为 "180,120"）；col 的 width 属性为纯数字。正则钉死值域，杜绝属性位注入。
+var (
+	colwidthAttrRe    = regexp.MustCompile(`^\d{1,5}(,\d{1,5})*$`)
+	plainNumberAttrRe = regexp.MustCompile(`^\d{1,5}$`)
+)
+
 // BuildContentPolicy 构造笔记内容的 HTML 白名单策略。
 //   - allowExternalImg=false（默认/唯一在役）：img src 仅 /uploads/
 //   - allowExternalImg=true：img src 不限（历史行为，仅测试口径在用）
@@ -42,13 +49,32 @@ func BuildContentPolicy(allowExternalImg bool) *bluemonday.Policy {
 
 	// 结构与排版标签
 	// v21.82：div/label/input 为任务清单（TaskList/TaskItem）渲染所需
+	// v2.2.2：colgroup/col 为表格列宽（编辑器 Table resizable 拖宽 → <col style="width:Npx">）入库所需
 	p.AllowElements("p", "br", "hr",
 		"h1", "h2", "h3", "h4", "h5", "h6",
 		"strong", "b", "em", "i", "u", "s", "del", "strike",
 		"code", "pre", "blockquote",
 		"ul", "ol", "li", "span", "mark",
 		"table", "thead", "tbody", "tr", "th", "td",
+		"colgroup", "col",
 		"div", "label", "input")
+
+	// v2.2.2 表格列宽：col 的 style 仅放行 width/min-width（Tiptap v3 TableView 恒写其一，
+	// 有拖宽为 "width:Npx"、未拖列为 "min-width:25px"）；CSS 值由 bluemonday 安全解析，
+	// url()/expression() 等危险构造仍被剥。colgroup 恒无属性——见下方 v21.116 label 教训，
+	// 无属性开标签另设 allowNoAttrs 门，须显式 AllowNoAttrs，否则被剥壳。col 恒带 style
+	// 走有属性分支，AllowNoAttrs 为防御（无属性时丢列宽声明但结构保留）。
+	p.AllowStyles("width", "min-width").OnElements("col")
+	p.AllowNoAttrs().OnElements("colgroup", "col")
+
+	// v2.2.2 R2（用户实测：拖宽保存成功、重新编辑却回到初始宽度）：列宽持久化第二通道——
+	// Tiptap 对拖宽单元格在 th/td 上序列化 `colwidth="180"`（多列跨合为逗号分隔），
+	// 编辑器重解析**优先**读该属性（parseColwidth），col 上的 width 属性仅是回退通道
+	// （且只认属性不认 style）。此前白名单未放行，入库即剥 ⇒ 重编辑列宽全丢
+	// （预览/长图靠 colgroup style 兜底显示正常，故只在编辑态暴露）。值域钉死数字，
+	// 绝不引入注入面。
+	p.AllowAttrs("colwidth").Matching(colwidthAttrRe).OnElements("th", "td")
+	p.AllowAttrs("width").Matching(plainNumberAttrRe).OnElements("col")
 
 	// v21.82 任务清单：data-type 标识 taskList/taskItem，data-checked 保存勾选态；
 	// input 仅允许 checkbox 类型与 checked 布尔属性（事件属性仍被全局剥除）
@@ -116,11 +142,39 @@ func BuildContentPolicy(allowExternalImg bool) *bluemonday.Policy {
 // 删除 allow_external_images 死配置分支。
 var contentPolicyLocalImg = BuildContentPolicy(false)
 
+// v2.2.2 R3 存量修复：R2 列的「载入前正则改写列宽」缺陷会在表格前遗留
+// `<p>&gt;&gt;&gt;</p>` 段落（每次编辑累积一行）。此处有界清理：
+// 只剥**紧邻 `<table`** 且内容为纯 '>' 的段落，真实正文里的 '>' 不受影响。
+// Go 正则不支持 lookahead，故把 `<table` 一并捕获再原样回填；连续多行需逐层剥。
+var (
+	colWidthArtifactPRe = regexp.MustCompile(`(?is)<p>\s*(?:&gt;|>)+?\s*</p>\s*(<table\b)`)
+	artifactStripMax    = 32
+)
+
+// StripLegacyColWidthArtifacts 清除 R2 列宽缺陷遗留的「表格前纯 > 段落」（幂等）。
+func StripLegacyColWidthArtifacts(content string) string {
+	if content == "" || !strings.Contains(content, "colgroup") {
+		return content
+	}
+	out := content
+	for i := 0; i < artifactStripMax; i++ {
+		next := colWidthArtifactPRe.ReplaceAllString(out, "$1")
+		if next == out {
+			return out
+		}
+		out = next
+	}
+	return out
+}
+
 // Content 按白名单消毒笔记 HTML 内容，入库前调用。
+// v2.2.2 R3：先清 R2 列宽缺陷遗留的 '>' 段落——同步 push 直入的存量内容不经前端，
+// 导出（MD）也走本函数，故这里清理可同时覆盖「入库自愈」与「导出干净」两条路径。
 func Content(content string) string {
 	if content == "" {
 		return content
 	}
+	content = StripLegacyColWidthArtifacts(content)
 	return contentPolicyLocalImg.Sanitize(content)
 }
 

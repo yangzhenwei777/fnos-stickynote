@@ -45,6 +45,16 @@ export const portableExport = (password) => call('PortableExport', password)
 // portableImport 触发原生打开对话框 + 导入；返回 {cancelled}|{generation,rebind_required,...}。
 export const portableImport = (password) => call('PortableImport', password)
 
+// exportNoteMD 笔记导出为 Markdown 字符串（v2.2.2 R2 桌面补齐；与 Web 端
+// GET/POST /notes/:id/export 同语义，见 desktop/export_bindings.go）。
+// 加密笔记由调用方（useNoteEncrypt 口令弹框）先取密码后传入；返回值直接落 blob 保存。
+export const exportNoteMD = (id, password) => callBridge('ExportNoteMD', Number(id), String(password || ''))
+
+// exportNotesZip 批量/全部导出（v2.2.2 R6 桌面补齐）：弹原生另存为，Go 侧直接写 zip。
+// ids 为空且 all=true = 导出全部未加密笔记。返回 {cancelled}|{path,exported,skipped,bytes}。
+export const exportNotesZip = (ids = [], all = false) =>
+  callBridge('ExportNotesZip', (ids || []).map(Number), !!all)
+
 // ---- 冲突中心（批次 8-Alt 刀 2；数据面见 desktop/synclocal/conflicts.go）----
 
 export const RESOLUTION_LABELS = {

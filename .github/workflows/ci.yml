@@ -286,8 +286,8 @@ jobs:
           # 2026-10-21：1.26.9 → 1.26.10（GO-2026-6809 crypto/x509，同 backend job 联动）
           go-version: '1.26.10'
           # 2026-10-09：同 backend job，关闭内置缓存（528MB→0），理由见 backend job 注释。
-          # 注：下方 webview2-fixed-133.0.3065.92 缓存（240MB）刻意保留——key 钉死版本号，
-          # 不会随每次 push 增殖，且省掉每轮 255MB cab 下载；它与本行关闭的 go 缓存互不冲突。
+          # 注：下方 webview2-fixed-156.0.4314.50 缓存刻意保留——key 钉死 runtime 版本，
+          # 不会随每次 push 增殖，且省掉每轮 ~160MB runtime 资产下载；它与本行关闭的 go 缓存互不冲突。
           cache: false
       - uses: actions/setup-node@v7
         with:
@@ -327,42 +327,45 @@ jobs:
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
           # 2026-10-13：NSIS 安装器形态退役（交付面 8 件套 = fpk + 桌面绿色版）——
           # 不再 choco install nsis，也不再产出/校验 installer（每轮省一步安装耗时）。
-      - name: 缓存钉版 WebView2 runtime（F1，2026-10-08：255MB cab 免每轮下载）
+      - name: 缓存钉版 WebView2 runtime（v2.2.2 R7：156.0.4314.50）
         uses: actions/cache@v4
         with:
-          path: desktop/build/webview2-runtime
-          key: webview2-fixed-133.0.3065.92
-      - name: 准备钉版 WebView2 Fixed Version runtime (E1，2026-09-23)
+          path: desktop/build/bin/webview2-runtime.tar.xz
+          key: webview2-fixed-156.0.4314.50
+      - name: 准备钉版 WebView2 Fixed Version runtime（156.0.4314.50）
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $ver = "133.0.3065.92"
-          $dst = "desktop/build/webview2-runtime"
-          # F1：cache 步骤已按版本键还原 runtime 目录——命中且完整即跳过下载与解包。
-          # ⚠ 升 runtime 版本时必须同步修改上方 cache key（两处版本字面量成对）。
-          if (Test-Path "$dst/msedgewebview2.exe") {
-            Write-Host "runtime cache hit: $dst（跳过 cab 下载）"
+          $ver = "156.0.4314.50"
+          $dst = "desktop/build/bin/webview2-runtime.tar.xz"
+          New-Item -ItemType Directory -Force -Path (Split-Path $dst) | Out-Null
+          if (Test-Path $dst) {
+            $len = (Get-Item $dst).Length
+            if ($len -gt 100MB) { Write-Host "runtime cache hit: $dst ($([math]::Round($len/1MB,1)) MB)"; exit 0 }
+            Remove-Item $dst -Force
+          }
+          # 首选项目私有 Release 上预裁剪好的 runtime（与本地交付包同一份产物，确定性最好）。
+          # 前置条件：推送前需上传 webview2-runtime-<ver>.tar.xz 到私有仓 Release runtime-<ver>。
+          try {
+            gh release download "runtime-$ver" -R yangzhenwei777/fnos-notepad -p "webview2-runtime-$ver.tar.xz" --clobber
+            if (Test-Path "webview2-runtime-$ver.tar.xz") {
+              Move-Item "webview2-runtime-$ver.tar.xz" $dst -Force
+              if ((Get-Item $dst).Length -gt 100MB) { Write-Host "runtime asset ready: $dst"; exit 0 }
+            }
+          } catch {
+            Write-Host "项目 runtime 资产不可用（$($_.Exception.Message)），尝试 runner 已安装版本"
+          }
+          # 回退：runner 自带的固定版 156 目录 → 交给 build-desktop.ps1 裁剪打包。
+          $pf = Join-Path ${env:ProgramFiles(x86)} "Microsoft\EdgeWebView\Application\$ver"
+          if (Test-Path (Join-Path $pf 'msedgewebview2.exe')) {
+            $rt = "desktop/build/webview2-runtime"
+            New-Item -ItemType Directory -Force -Path $rt | Out-Null
+            robocopy $pf $rt /MIR /NFL /NDL /NJH /NJS | Out-Null
+            Write-Host "using runner installed runtime: $pf"
             exit 0
           }
-          # runtime 资产不入库（~255MB cab）——CI 用 gh（runner 预装 + 自动 token）从官方归档
-          # 下载后解包到 desktop/build/webview2-runtime，供 build-desktop.ps1 打进 zip/NSIS
-          #（否则 CI 产物缺钉版 runtime，用户机会退回 Evergreen 崩溃面）。
-          # 注：匿名 Invoke-WebRequest 直连 release 在 runner 上被拒（实测 exit 1），gh 认证通道可靠。
-          $cab = "Microsoft.WebView2.FixedVersionRuntime.$ver.x64.cab"
-          gh release download $ver -R westinyang/WebView2RuntimeArchive -p $cab --clobber
-          if (-not (Test-Path $cab)) { throw "cab 下载失败: $cab" }
-          $tmp = "fvr-extract"
-          New-Item -ItemType Directory -Force -Path $tmp | Out-Null
-          expand.exe $cab -F:* $tmp | Out-Null
-          $inner = Get-ChildItem $tmp -Directory | Select-Object -First 1
-          $dst = "desktop/build/webview2-runtime"
-          # 父目录必须先建：Move-Item 到不存在的目录会报 "Could not find a part of the path"（CI 实测）
-          New-Item -ItemType Directory -Force -Path (Split-Path $dst) | Out-Null
-          if (Test-Path $dst) { Remove-Item -Recurse -Force $dst }
-          Move-Item $inner.FullName $dst
-          if (-not (Test-Path "$dst/msedgewebview2.exe")) { throw "webview2-runtime 准备失败：缺 msedgewebview2.exe" }
-          Write-Host "pinned webview2 runtime ready: $dst"
+          throw "156 runtime 不可用：请上传 webview2-runtime-$ver.tar.xz 到私有 Release runtime-$ver（或设置 STICKYNOTE_WV2_SRC）"
       - name: build-desktop.ps1（绿色版 zip + 版本注入断言）
         run: |
           cd web && npm ci --registry=https://registry.npmjs.org && cd ..

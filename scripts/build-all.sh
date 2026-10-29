@@ -21,7 +21,15 @@ echo ""
 echo "📦 编译前端..."
 # v21.52 审计修复（发布工程）：npm install → npm ci 严格按 package-lock.json 恢复依赖，
 # 保证 release 构建可重复（install 可能重算依赖树）。
-cd web && npm ci && npm run build && cd ..
+# ⭐ v2.2.2 R2 修复（2026-10-28 实锤）：原 `cd web && npm ci && npm run build && cd ..`
+# 是 set -e 不覆盖的经典 AND-list 陷阱——链中段（npm ci/npm run build）失败时脚本
+# **不终止**，静默用旧 dist 出全平台包 + fpk（本轮实际发生：vite dev server 锁
+# node_modules 致 npm ci EPERM，旧包被原样重出，verify-fpk 因旧包自洽而全过）。
+# 改为逐条显式失败即退，前端构建失败绝不允许继续打包。
+cd web || exit 1
+npm ci || exit 1
+npm run build || exit 1
+cd .. || exit 1
 
 compile() {
     GOOS=$1

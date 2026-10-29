@@ -618,7 +618,10 @@ html[data-theme="dark"] .clear-tag:hover {
   overflow-y: auto;
   /* v21.45：顶部 24px → 10px，预览操作按钮中心线（10+8+16=34px）与
      左侧 sidebar-header 按钮中心线（v21.207：16+18=34px）水平对齐 */
-  padding: 10px 40px 24px;
+  /* v2.2.2 R4：左右内边距 40px → 32px，与编辑区/编辑内预览（.editor-content /
+     .note-preview-content 均 32px）对齐——此前相差 16px，切换编辑↔查看时正文变窄，
+     表格列宽随之变化（用户实测「点左侧笔记后预览窄一点点」） */
+  padding: 10px 32px 24px;
 }
 
 /* v21.23 侧栏收起时：编辑标题栏/查看操作区左移，为「展开笔记列表」按钮让位（按钮占 4~48px） */
@@ -820,6 +823,8 @@ html[data-theme="dark"] .clear-tag:hover {
   background: var(--bg-tertiary);
   padding: 2px 6px;
   border-radius: var(--radius-sm);
+  /* v2.2.2 R6：与编辑/长图共用代码字体栈（此前继承正文，三者观感不一致） */
+  font-family: var(--font-code);
   font-size: 0.9em;
 }
 
@@ -832,12 +837,17 @@ html[data-theme="dark"] .clear-tag:hover {
   border-radius: var(--radius-lg);
   overflow-x: auto;
   margin: 1em 0;
+  font-family: var(--font-code);
+  font-size: var(--font-code-size, 13px);
+  line-height: 1.5;
 }
 
 .view-content :deep(pre code),
 .note-preview-content :deep(pre code) {
   background: none;
   padding: 0;
+  /* 覆盖行内 code 的 0.9em，块内代码保持代码块字号 */
+  font-size: inherit;
 }
 
 .view-content :deep(img),
@@ -856,6 +866,22 @@ html[data-theme="dark"] .clear-tag:hover {
   border-collapse: collapse;
   margin: 12px 0;
   width: 100%;
+}
+/* v2.2.2 表格列宽保持：编辑器 resizable 拖宽产出的 colgroup（sanitize 标记 data-has-colwidth）
+   启用 fixed 布局 + 定宽——无标记表格保持 width:100% 自适应不动。
+   v2.2.2 R4（方案 A）：列宽已投影为百分比 → 表格固定布局并**撑满正文宽**；
+   列宽只表达内部比例，与容器宽度/窗口尺寸彻底解耦（编辑区/预览/长图/md 同比例）。
+   实测：此前 width:auto + min-width:40% 时「未拖列」吃剩余空间，窄窗口会被压成竖排单字。 */
+.view-content :deep(table[data-has-colwidth]),
+.note-preview-content :deep(table[data-has-colwidth]) {
+  table-layout: fixed;
+  width: 100%;
+}
+.view-content :deep(table[data-has-colwidth] th),
+.view-content :deep(table[data-has-colwidth] td),
+.note-preview-content :deep(table[data-has-colwidth] th),
+.note-preview-content :deep(table[data-has-colwidth] td) {
+  overflow-wrap: anywhere;
 }
 .view-content :deep(th),
 .view-content :deep(td),

@@ -1,5 +1,5 @@
 appname               = stickynote
-version               = 2.2.1
+version               = 2.2.2
 display_name          = Sticky note
 platform              = x86
 # checksum 字段由 fnpack build 自动计算注入，请勿手动填写
@@ -11,6 +11,7 @@ desktop_uidir         = ui
 desktop_applaunchname = stickynote.Application
 desc                  = Sticky note 便签应用
 changelog             = """
+2.2.2 — 导出为长图：预览页「更多」新增导出 PNG 长图（800px 白底海报、超长分窗编码、dpr 自适应、加密笔记先验口令）；表格列宽持久化并在编辑/预览/长图/Markdown 四处一致；Markdown 导出图片 base64 内联；桌面端批量导出；长图代码字体根治；钉版 WebView2 升级 156。
 2.2.1 — 用户反馈修复：预览空行高度对齐编辑态；TXT 导入按行独立成段（选中单行设格式不再波及整段）；Markdown 粘贴迁移官方编辑器钩子单通道插入并收紧触发条件；导入笔记落入当前选中文件夹；新增备份执行记录清除（仅清已终结记录）；长英文串预览自动断行。
 2.2.0 — 统一网关模式：unix socket + TCP 双轨监听；桌面端会话恢复与同步稳定性改进；CORS 兼容 fnOS App / FN Connect 中继形态；安全加固与依赖更新。
 2.1.x — 移动端启动与 CORS 修正、管理后台路由兼容、桌面同步与恢复修复。

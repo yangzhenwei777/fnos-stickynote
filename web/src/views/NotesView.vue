@@ -232,6 +232,16 @@
                       >
                         <el-icon><Delete /></el-icon>删除
                       </el-dropdown-item>
+                      <!-- v2.2.2 导出为长图（预览页正文 → 离屏海报 → PNG）。
+                           R2（用户实测）：导出长图与下载之间缺分隔带且两行视觉贴死
+                           （其余各项均有 divided，唯独下载没有）→ 下载补 divided，
+                           恢复整份菜单统一的行距节奏 -->
+                      <el-dropdown-item
+                        command="export-image"
+                        divided
+                      >
+                        <el-icon><Picture /></el-icon>导出长图
+                      </el-dropdown-item>
                       <el-dropdown-item
                         command="download"
                         divided
@@ -417,7 +427,8 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRouter, useRoute, onBeforeRouteLeave } from 'vue-router'
-import { Plus, Delete, Document, EditPen, Lock, Unlock, View, Download, Upload, ArrowLeft, ArrowRight, MoreFilled, FolderOpened, CopyDocument, Loading } from '@element-plus/icons-vue'
+import { Plus, Delete, Document, EditPen, Lock, Unlock, View, Download, Upload, ArrowLeft, ArrowRight, MoreFilled, FolderOpened, CopyDocument, Loading, Picture } from '@element-plus/icons-vue'
+import { exportNotePoster } from '@/utils/notePoster'
 import { sanitizeNoteHtml, sanitizeHighlight } from '@/utils/sanitize'
 import { installAutoContrast } from '@/utils/autoContrast'
 import { useNotes } from '@/composables/useNotes'
@@ -529,7 +540,7 @@ const { searchQuery, activeTag, allTags, showShortQueryHint, debouncedSearch } =
 const isDirty = ref(false)
 // v21.46：useNoteEncrypt 提前声明——useAutoSave 需以回调注入加密密码
 // （箭头函数延迟求值，但先声明 encryptPassword 避免 TDZ 与 ESLint 未定义告警）
-const { encryptUnlocked, encryptPassword, pwdDialogVisible, pwdDialogMode, pwdDialogTitle, pwdPlaceholder, pwdInput, pwdConfirm, pwdLoading, showEncryptDialog, showPasswordDialog, handlePwdSubmit: _pwdSubmit, downloadNote, resetOnNoteChange } = useNoteEncrypt(currentNote, syncNoteInList)
+const { encryptUnlocked, encryptPassword, pwdDialogVisible, pwdDialogMode, pwdDialogTitle, pwdPlaceholder, pwdInput, pwdConfirm, pwdLoading, showEncryptDialog, showPasswordDialog, handlePwdSubmit: _pwdSubmit, downloadNote, resetOnNoteChange } = useNoteEncrypt(currentNote, syncNoteInList, () => exportNoteAsImage())
 
 // v21.85：保存前强制同步编辑器防抖窗口内的最新内容（回调注入模式同 v21.46 getEncryptPassword）
 const ensureFreshContent = () => {
@@ -690,7 +701,7 @@ async function removeNote() {
   }
 }
 
-// 预览标题行【更多】下拉命令分发：加密/解密/移动到/复制到/删除/下载
+// 预览标题行【更多】下拉命令分发：加密/解密/移动到/复制到/删除/下载/导出长图
 function handleViewAction(cmd) {
   if (cmd === 'encrypt') showEncryptDialog()
   else if (cmd === 'decrypt') showPasswordDialog('decrypt')
@@ -700,6 +711,69 @@ function handleViewAction(cmd) {
     // 加密且未解锁时，下载前需先验证密码（与旧版行为一致）
     if (currentNote.value?.is_encrypted && !encryptUnlocked.value) showPasswordDialog('download')
     else downloadNote()
+  } else if (cmd === 'export-image') {
+    // v2.2.2 导出长图：前端渲染需明文在内存，加密未解锁先走口令验证（image 分支解锁后回跳本函数）
+    if (currentNote.value?.is_encrypted && !encryptUnlocked.value) showPasswordDialog('image')
+    else exportNoteAsImage()
+  }
+}
+
+// ---- v2.2.2 导出为长图 ----
+// 纯前端渲染（离屏海报 → SnapDOM → PNG），不落盘、不占配额、不进备份
+
+/**
+ * 采集预览态实测宽度（v2.2.2 R3）：表格每列宽 / 每张图宽 / 正文容器宽。
+ * 用途：海报固定 800px 宽，需按「预览 → 海报」的宽度比例等比投影，
+ * 否则未拖过的表格列（只有 min-width，靠剩余空间撑开）在海报里会塌成竖排单字，
+ * 图片也会因相对占比变化而显得变大（用户 R2 fpk 实测反馈）。
+ * 匹配口径：两处容器内的表格/图片均来自同一份消毒后内容，文档顺序一一对应。
+ * @returns {{contentWidth:number, tables:number[][], images:number[]}|null}
+ */
+function collectPreviewMetrics() {
+  const el = viewContentRef.value
+  if (!el || !el.clientWidth) return null
+  // 注意：tables/images 数组**按文档顺序保留占位**（量测不到写 null），
+  // 与海报容器一一对应；此处不可 filter 掉无效项，否则索引错位会把宽度套到别的表上。
+  const tables = Array.from(el.querySelectorAll('table'))
+    .map((t) => {
+      const row = t.querySelector('tr')
+      if (!row) return null
+      const w = Array.from(row.children).map((c) => c.getBoundingClientRect().width)
+      return w.length && w.every((n) => n > 0) ? w : null
+    })
+  const images = Array.from(el.querySelectorAll('img')).map((i) => i.getBoundingClientRect().width)
+  return { contentWidth: el.clientWidth, tables, images }
+}
+
+async function exportNoteAsImage() {
+  if (!currentNote.value?.content) {
+    message.warning('笔记内容为空，无需导出')
+    return
+  }
+  const loading = ElLoading.service({
+    lock: true,
+    text: '正在生成长图，长笔记可能需要几秒…',
+    background: 'rgba(0, 0, 0, 0.35)'
+  })
+  try {
+    // 确保预览 DOM 已按最新内容渲染后再量测（加密笔记口令解锁后内容刚注入）
+    await nextTick()
+    const previewMetrics = collectPreviewMetrics()
+    const r = await exportNotePoster(currentNote.value, { previewMetrics })
+    if (r.sizeMB > 20) message.success(`长图已导出（${r.sizeMB} MB，文件较大）`)
+    else message.success(`长图已导出：${r.filename}`)
+    // 捕获警告（如分窗降级、图片占位）仅记控制台，不产出半截图口径由失败分支兜底
+    if (r.warnings.length) console.warn('[notePoster] capture warnings:', r.warnings)
+  } catch (e) {
+    console.error('[notePoster] export failed:', e)
+    const msg = String(e?.message || '')
+    message.error(
+      msg.includes('CompressionStream')
+        ? '当前浏览器内核较旧，不支持长图分窗编码，请升级浏览器后重试'
+        : '导出长图失败，请重试'
+    )
+  } finally {
+    loading.close()
   }
 }
 

@@ -319,6 +319,7 @@
         type="primary"
         :icon="Download"
         :disabled="selectedIds.size === 0"
+        :loading="batchExporting"
         @click="batchExport"
       >
         导出
@@ -507,6 +508,8 @@ import { message } from '@/utils/message'
 import DOMPurify from 'dompurify'
 import { stripHtml, splitTags, formatDate } from '@/utils/note'
 import { importNoteFile } from '@/composables/useNoteImport'
+import { IS_DESKTOP } from '@/api/local/transport'
+import { exportNoteMD, exportNotesZip } from '@/api/local/desktopApi'
 
 // 渲染搜索高亮片段（FTS5 snippet 返回的带 <mark> 标签 HTML）。只允许 mark 标签防 XSS。
 function sanitizeHighlight(html) {
@@ -619,6 +622,7 @@ const fileInput = ref(null)
 // v20.7 批量操作
 const batchMode = ref(false)
 const selectedIds = ref(new Set())
+const batchExporting = ref(false)
 
 let searchTimer = null
 
@@ -799,10 +803,10 @@ function saveBlob(resp, fallbackName) {
 
 async function exportSingle(note) {
   try {
+    let pwd = ''
     if (note.is_encrypted) {
       // v21.107 P1-5：加密笔记导出后端仅接受 POST+密码——此前列表入口走 GET 必失败
       // 且只报笼统「导出失败」；补密码输入直达（与预览页「下载」入口行为一致）。
-      let pwd = ''
       try {
         const r = await ElMessageBox.prompt('这是加密笔记，请输入加密密码后导出', '导出加密笔记', {
           inputType: 'password',
@@ -813,18 +817,26 @@ async function exportSingle(note) {
       } catch {
         return // 用户取消
       }
-      const resp = await api.post('/notes/' + note.id + '/export', { password: pwd }, { responseType: 'blob' })
-      saveBlob(resp, `${note.title || '笔记'}.md`)
+    }
+    if (IS_DESKTOP) {
+      // v2.2.2 R6：桌面壳内 /notes/:id/export 未接线（LocalTransport 501），直走 Go 绑定
+      const md = await exportNoteMD(note.id, pwd)
+      saveBlob(
+        { headers: {}, data: new Blob([md], { type: 'text/markdown;charset=utf-8' }) },
+        `${note.title || '笔记'}.md`
+      )
       message.success('导出成功')
       return
     }
-    const resp = await exportNote(note.id)
+    const resp = note.is_encrypted
+      ? await api.post('/notes/' + note.id + '/export', { password: pwd }, { responseType: 'blob' })
+      : await exportNote(note.id)
     saveBlob(resp, `${note.title || '笔记'}.md`)
     message.success('导出成功')
   } catch (e) {
     // v21.107 P1-5：密码错（403）给出可行动原因（responseType=blob 时 data 为 Blob，按状态码判断）
     if (e.response?.status === 403) message.error('密码错误，无法导出')
-    else message.errorOnce(e.response?.data?.error || '导出失败')
+    else message.errorOnce(e.response?.data?.error || e.message || '导出失败')
   }
 }
 
@@ -832,6 +844,15 @@ async function exportAll() {
   if (exportingAll.value) return
   exportingAll.value = true
   try {
+    if (IS_DESKTOP) {
+      // v2.2.2 R6：原生另存为，Go 侧直接落盘 zip（避免浏览器静默下载不可达）
+      const r = await exportNotesZip([], true)
+      if (r?.cancelled) return
+      const skipped = Number(r?.skipped || 0)
+      const base = `已导出 ${r?.exported ?? 0} 篇笔记`
+      message.success(skipped > 0 ? `${base}，跳过 ${skipped} 篇加密笔记` : `${base}，已保存到 ${r?.path || '所选位置'}`)
+      return
+    }
     const resp = await exportAllNotes()
     saveBlob(resp, 'Sticky-note-导出.zip')
     const skipped = resp.headers['x-encrypted-skipped']
@@ -840,8 +861,8 @@ async function exportAll() {
     } else {
       message.success('导出成功，已导出全部笔记')
     }
-  } catch {
-    message.error('导出失败')
+  } catch (e) {
+    message.errorOnce(e.response?.data?.error || e?.message || '导出失败')
   } finally {
     exportingAll.value = false
   }
@@ -896,16 +917,23 @@ async function batchDelete() {
 }
 
 async function batchExport() {
-  if (selectedIds.value.size === 0) return
+  if (selectedIds.value.size === 0 || batchExporting.value) return
+  batchExporting.value = true
   try {
     const ids = [...selectedIds.value]
+    if (IS_DESKTOP) {
+      // v2.2.2 R6：原生另存为，Go 侧直接落盘 zip
+      const r = await exportNotesZip(ids, false)
+      if (r?.cancelled) return
+      const skipped = Number(r?.skipped || 0)
+      const base = `已导出 ${r?.exported ?? 0} 篇笔记`
+      message.success(skipped > 0 ? `${base}，跳过 ${skipped} 篇加密笔记` : `${base}，已保存到 ${r?.path || '所选位置'}`)
+      selectedIds.value = new Set()
+      batchMode.value = false
+      return
+    }
     const resp = await batchExportNotes(ids)
-    const url = URL.createObjectURL(resp.data)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'Sticky-note-批量导出.zip'
-    a.click()
-    URL.revokeObjectURL(url)
+    saveBlob(resp, 'Sticky-note-批量导出.zip')
     // v21.58 F-12：按后端 header 提示实际导出数量与跳过的加密笔记数
     const skipped = Number(resp.headers?.['x-encrypted-skipped'] || 0)
     if (skipped > 0) {
@@ -917,7 +945,9 @@ async function batchExport() {
     selectedIds.value = new Set()
     batchMode.value = false
   } catch (e) {
-    message.error(e.response?.data?.error || '批量导出失败')
+    message.error(e.response?.data?.error || e.message || '批量导出失败')
+  } finally {
+    batchExporting.value = false
   }
 }
 

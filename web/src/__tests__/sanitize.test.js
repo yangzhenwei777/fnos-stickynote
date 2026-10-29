@@ -42,6 +42,29 @@ describe('sanitizeNoteHtml — 安全不变量', () => {
     expect(out).toContain('<input')
     expect(out).toContain('项')
   })
+
+  // v2.2.2 表格列宽保持：编辑器 resizable 产出 <col style="width:Npx">，放行 colgroup/col
+  // 并给带真实列宽的 table 打 data-has-colwidth 标记（CSS 据此启用 fixed 布局）
+  // v2.2.2 R4：展示层把列宽投影为百分比（171 / 171 = 50%/50%），min-width 清除
+  it('保留 colgroup/col 并把列宽投影为百分比（编辑器 resizable 产物）', () => {
+    const out = sanitizeNoteHtml('<table><colgroup><col style="width: 171px"><col style="min-width: 25px"></colgroup><tbody><tr><td>A</td><td>B</td></tr></tbody></table>')
+    expect(out).toContain('<colgroup>')
+    expect(out).toContain('<col style=')
+    expect(out).toContain('width: 50%')
+    expect(out).not.toContain('width: 171px')
+    expect(out).not.toContain('min-width')
+  })
+  it('存在真实列宽时 table 打 data-has-colwidth 标记；纯 min-width（未拖宽）不打', () => {
+    const dragged = sanitizeNoteHtml('<table><colgroup><col style="width: 171px"><col style="min-width: 25px"></colgroup><tbody><tr><td>A</td></tr></tbody></table>')
+    expect(dragged).toContain('data-has-colwidth')
+    const pristine = sanitizeNoteHtml('<table><colgroup><col style="min-width: 25px"><col style="min-width: 25px"></colgroup><tbody><tr><td>A</td></tr></tbody></table>')
+    expect(pristine).not.toContain('data-has-colwidth')
+  })
+  it('剥 <col> 外的恶意形态（col 不放行事件属性）', () => {
+    const out = sanitizeNoteHtml('<table><colgroup><col style="width:10px" onclick="x()"></colgroup><tbody><tr><td>A</td></tr></tbody></table>')
+    expect(out).not.toContain('onclick')
+    expect(out).toContain('width: 100%')
+  })
 })
 
 describe('sanitizeHighlight — 列表高亮片段', () => {

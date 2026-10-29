@@ -45,13 +45,25 @@ import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
 // v21.220：代码块复制按钮（widget decoration，不动 schema/渲染，见 codeBlockCopy.js 头注）
 import { CodeBlockCopy } from './editor/codeBlockCopy'
 // v21.109 tiptap 3.x 迁移：table 及 row/header/cell 并入 @tiptap/extension-table（命名导入）
-import { Table, TableRow, TableHeader, TableCell } from '@tiptap/extension-table'
+import { TableRow } from '@tiptap/extension-table'
+// v2.2.2 R3：单元格列宽回读三通道（colwidth 属性 / col width 属性 / col style width）——
+// 替代 R2 的「载入前正则改写 HTML」（那实现残留 '>' 致「每点一次编辑多一行 >」）
+import { StickyTableCell, StickyTableHeader } from './editor/tableExt'
+// v2.2.2 R4（方案 A）：列宽渲染投影为百分比（colgroup % + 固定布局 + 100% 宽），
+// 与预览/长图/md 同比例；存储仍保留 px（拖拽算法依赖 px）
+import { StickyTable, PctTableView } from './editor/tablePctView'
+// v2.2.2 R5：百分比渲染与官方 px 拖拽协议的桥接（按下前归一 px 域 + 松开后
+// 保持总宽重平衡），修复 R4「把手与光标错位 / 表格乱跳 / 拖 80 只变 35」。
+import { TablePctResize } from './editor/tablePctResize'
 import { lowlight } from 'lowlight/lib/common.js'
 import EditorToolbar from './editor/EditorToolbar.vue'
 import { EMIT_DEBOUNCE, EMIT_MAX_WAIT } from './editor/constants'
 import { FontFamily, FontSize, ResizableImage, IndentParagraph, StickyTaskItem } from './editor/extensions'
 // v2.2.1（用户反馈 2b）：Markdown 粘贴转换迁移至官方 editorProps.handlePaste（防双插）
 import { isMarkdownPaste, mdToHtml } from './editor/pasteMarkdown'
+// v2.2.2 R3（R2 缺陷修复）：清理 R2 列宽缺陷遗留的「表格前纯 > 段落」。
+// 只剥紧邻表格的纯 '>' 段落，真实正文不受影响；幂等（清理后再载入无变化）。
+import { stripLegacyColWidthArtifacts } from './editor/tableColWidth'
 
 const props = defineProps({
   modelValue: {
@@ -197,14 +209,19 @@ const editor = useEditor({
     }),
     // v21.220：代码块右上角复制按钮（编辑态；预览态由 NotesView 调 attachCodeCopyButtons）
     CodeBlockCopy,
-    Table.configure({
-      resizable: true
+    StickyTable.configure({
+      resizable: true,
+      View: PctTableView,
+      // v2.2.2 R5：固定宽（100%）表格里最后一列右边界没有可移动空间，
+      // 关闭最后一列拖拽，避免「拖右边缘却整表缩放」的错位感
+      lastColumnResizable: false
     }),
+    TablePctResize,
     TableRow,
-    TableHeader,
-    TableCell
+    StickyTableHeader,
+    StickyTableCell
   ],
-  content: props.modelValue,
+  content: stripLegacyColWidthArtifacts(props.modelValue),
   onUpdate: () => {
     // v21.85：不再每事务全量 getHTML() 回流，防抖合并后统一发出
     scheduleEmit()
@@ -242,7 +259,8 @@ watch(() => props.modelValue, (newValue) => {
   lastEmittedHtml = newValue
   // v21.109 tiptap 3.x：v3 的 setContent 默认触发 update（v2 默认不触发）——
   // 必须显式 emitUpdate:false，否则外部 set 会回声触发 onUpdate→scheduleEmit→dirty 误置。
-  ed.commands.setContent(newValue, { emitUpdate: false })
+  // v2.2.2 R3：外部变更（草稿恢复/解密/切换笔记）同样只做存量 > 段落清理（字符串比较仍用原始串）
+  ed.commands.setContent(stripLegacyColWidthArtifacts(newValue), { emitUpdate: false })
 })
 
 </script>
@@ -290,14 +308,21 @@ watch(() => props.modelValue, (newValue) => {
   border-radius: var(--radius-lg);
   padding: 16px;
   overflow-x: auto;
-  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
-  font-size: 13px;
+  font-family: var(--font-code);
+  font-size: var(--font-code-size, 13px);
   line-height: 1.5;
 }
 .editor-content :deep(pre code) {
   background: none;
   padding: 0;
   color: var(--text-primary);
+  /* 行内 code 规则给了 0.9em，块内代码保持代码块字号 */
+  font-size: inherit;
+}
+/* v2.2.2 R6：行内代码与代码块同字体栈（此前继承正文字体，与预览/长图不一致） */
+.editor-content :deep(code) {
+  font-family: var(--font-code);
+  font-size: 0.9em;
 }
 html[data-theme='dark'] .editor-content :deep(pre) {
   background: #1e1e2e;
@@ -326,6 +351,30 @@ html[data-theme='dark'] .editor-content :deep(pre code) {
 .editor-content :deep(.selectedCell) {
   background: var(--primary-color);
   opacity: 0.1;
+}
+/* v2.2.2 表格列宽拖拽把手：Table.configure({resizable:true}) 早已开启，但缺样式导致
+   把手不可见（prosemirror-tables 官方口径：cell 相对定位 + 把手绝对定位 + col-resize 光标）；
+   超宽表格经 .tableWrapper 横向滚动，与预览态行为一致 */
+.editor-content :deep(.tableWrapper) {
+  overflow-x: auto;
+}
+.editor-content :deep(table td),
+.editor-content :deep(table th) {
+  position: relative;
+}
+.editor-content :deep(.column-resize-handle) {
+  position: absolute;
+  top: 0;
+  bottom: -1px;
+  right: -3px;
+  width: 6px;
+  background: var(--primary-color);
+  border-radius: 2px;
+  pointer-events: none;
+  z-index: 20;
+}
+.editor-content :deep(.resize-cursor) {
+  cursor: col-resize;
 }
 
 .editor-content :deep(.ProseMirror p) {

@@ -118,7 +118,9 @@ export default defineConfig(({ mode }) => ({
   server: {
     port: 3000,
     proxy: {
-      '/api': 'http://localhost:13389'
+      '/api': 'http://localhost:13389',
+      // dev 代理补 /uploads：本地 dev 下笔记内图片直连后端上传目录（仅 dev server 配置，不影响构建产物）
+      '/uploads': 'http://localhost:13389'
     }
   },
   // v21.54 P1-A：Vitest 配置——jsdom 环境 + 处理 CSS（element-plus 按需样式在测试中静默处理，不抛 Unknown extension）

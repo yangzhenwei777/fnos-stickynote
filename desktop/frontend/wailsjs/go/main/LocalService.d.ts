@@ -41,6 +41,10 @@ export function EncryptNote(arg1:number,arg2:string,arg3:string):Promise<void>;
 
 export function ExportDiagnostics():Promise<string>;
 
+export function ExportNoteMD(arg1:number,arg2:string):Promise<string>;
+
+export function ExportNotesZip(arg1:Array<number>,arg2:boolean):Promise<Record<string, any>>;
+
 export function ForceFullResync():Promise<Record<string, any>>;
 
 export function GetNote(arg1:number):Promise<model.Note>;

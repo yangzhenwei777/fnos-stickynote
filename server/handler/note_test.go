@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"stickynote/database"
 	"stickynote/model"
+	"stickynote/notetext"
 )
 
 // tempInstanceDir 测试专用临时实例目录：替代 t.TempDir() 的"一次性强删"。
@@ -62,7 +63,7 @@ func TestBuildNoteMD(t *testing.T) {
 			Content: "<p>正文内容</p><ul><li>项目1</li></ul>",
 			Tags:    "标签A, 标签B, 标签C",
 		}
-		got := buildNoteMD(n)
+		got := buildNoteMD(n, nil)
 		if !strings.HasPrefix(got, "# ") {
 			t.Errorf("应 '# ' 开头: %q", got[:60])
 		}
@@ -73,7 +74,7 @@ func TestBuildNoteMD(t *testing.T) {
 
 	t.Run("空笔记", func(t *testing.T) {
 		n := &model.Note{Title: "", Content: "", Tags: ""}
-		got := buildNoteMD(n)
+		got := buildNoteMD(n, nil)
 		if got == "" {
 			t.Log("空笔记 MD 为空（预期内）")
 		}
@@ -81,7 +82,7 @@ func TestBuildNoteMD(t *testing.T) {
 
 	t.Run("无标签", func(t *testing.T) {
 		n := &model.Note{Title: "无标签笔记", Content: "<p>test</p>", Tags: ""}
-		got := buildNoteMD(n)
+		got := buildNoteMD(n, nil)
 		if !strings.Contains(got, "# 无标签笔记") {
 			t.Errorf("应含标题: %s", got)
 		}
@@ -90,14 +91,14 @@ func TestBuildNoteMD(t *testing.T) {
 
 func TestSanitizeExportFilename(t *testing.T) {
 	t.Run("正常中文", func(t *testing.T) {
-		got := sanitizeExportFilename("我的笔记")
+		got := notetext.SanitizeExportFilename("我的笔记")
 		if got != "我的笔记" {
 			t.Errorf("正常中文应不变: %q", got)
 		}
 	})
 
 	t.Run("特殊字符清理", func(t *testing.T) {
-		got := sanitizeExportFilename("笔/记:斜*杠?问号")
+		got := notetext.SanitizeExportFilename("笔/记:斜*杠?问号")
 		for _, c := range []string{"/", ":", "*", "?"} {
 			if strings.Contains(got, c) {
 				t.Errorf("应清理 %q, got %q", c, got)
@@ -107,7 +108,7 @@ func TestSanitizeExportFilename(t *testing.T) {
 
 	t.Run("超长截断", func(t *testing.T) {
 		long := strings.Repeat("A", 300) + ".md"
-		got := sanitizeExportFilename(long)
+		got := notetext.SanitizeExportFilename(long)
 		if len(got) > 201 { // 200 + ".md" > 201 means exceeded
 			t.Errorf("超长应截断: %d chars", len(got))
 		}
@@ -159,21 +160,21 @@ func TestDedupeExportName(t *testing.T) {
 	used := make(map[string]bool)
 
 	t.Run("无冲突", func(t *testing.T) {
-		got := dedupeExportName(used, "量子计算机原理笔记")
+		got := notetext.DedupeExportName(used, "量子计算机原理笔记")
 		if got != "量子计算机原理笔记" {
 			t.Errorf("无冲突应不变: %q", got)
 		}
 	})
 
 	t.Run("一次冲突", func(t *testing.T) {
-		got := dedupeExportName(used, "量子计算机原理笔记")
+		got := notetext.DedupeExportName(used, "量子计算机原理笔记")
 		if got != "量子计算机原理笔记(2)" {
 			t.Errorf("首次冲突 i=2: %q", got)
 		}
 	})
 
 	t.Run("二次冲突", func(t *testing.T) {
-		got := dedupeExportName(used, "量子计算机原理笔记")
+		got := notetext.DedupeExportName(used, "量子计算机原理笔记")
 		if got != "量子计算机原理笔记(3)" {
 			t.Errorf("二次冲突 i=3: %q", got)
 		}

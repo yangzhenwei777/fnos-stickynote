@@ -50,6 +50,12 @@
   --radius-xl: 10px;
   --bg-hover: #ebf0f9;
   --shadow-panel: none;
+  /* v2.2.2 R6 代码字体栈：编辑/预览/长图三处共用。
+     优先真·中英等宽字体（装了 Sarasa/思源等宽则中英文完全同源）；未装时英文取
+     Consolas、中文显式回退微软雅黑 UI —— 不写中文回退会让 Windows 落到默认等宽
+     中文字体 NSimSun（新宋体），与 Consolas 观感割裂（R6 用户反馈实测）。 */
+  --font-code: 'Sarasa Mono SC', 'Noto Sans Mono CJK SC', 'Cascadia Mono', ui-monospace, SFMono-Regular, Consolas, 'SF Mono', Menlo, 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', monospace;
+  --font-code-size: 13px;
   --sidebar-width: 280px;
   --header-height: 64px;
   /* v21.207：变量名保留以免破坏引用，值改为实心主色（去渐变） */

@@ -74,6 +74,14 @@ export function ExportDiagnostics() {
   return window['go']['main']['LocalService']['ExportDiagnostics']();
 }
 
+export function ExportNoteMD(arg1, arg2) {
+  return window['go']['main']['LocalService']['ExportNoteMD'](arg1, arg2);
+}
+
+export function ExportNotesZip(arg1, arg2) {
+  return window['go']['main']['LocalService']['ExportNotesZip'](arg1, arg2);
+}
+
 export function ForceFullResync() {
   return window['go']['main']['LocalService']['ForceFullResync']();
 }

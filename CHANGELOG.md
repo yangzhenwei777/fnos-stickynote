@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.2.2
+
+- New: export a note as a long image (PNG) from the note view "more" menu — fixed 800px light poster layout with title/date header and footer, task-list checkboxes rendered as static symbols, same-origin images inlined automatically. The menu entry sits above "Download" with a divider; long code lines soft-wrap in the exported image instead of being clipped.
+- Very long notes are handled by windowed PNG encoding (no canvas height cap), with adaptive DPR fallback for size/sharpness balance.
+- Markdown export now embeds images as base64 data URIs (single-file, renders in Typora/VSCode/Obsidian); failed or non-whitelisted sources gracefully fall back to the original reference.
+- Table column widths resized in the editor are now persisted and preserved across read/preview/long-image views (new colgroup/col whitelist on both backend sanitizer and frontend sanitizer, plus visible drag handles).
+- Encrypted notes require the note password before export; the plaintext is rendered in-browser only (nothing is stored, quota-free, excluded from backups).
+- New dependency: @zumer/snapdom 3.5.0 (MIT, zero runtime dependencies), loaded lazily on first export.
+
 ## 2.2.1
 
 - Preview: empty paragraphs now keep the same line height as the editor, so blank lines no longer collapse in read/preview mode.
