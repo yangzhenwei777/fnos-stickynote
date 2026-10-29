@@ -1,15 +1,16 @@
 module stickynote-desktop
 
 // 2026-10-09：1.26.7 → 1.26.9（同server，Go 官方安全发布，详见 server/go.mod 注释）
-//   desktop 依赖 golang.org/x/net（indirect），随 server 联动升至 v0.60.0。
+//   desktop 依赖 golang.org/x/net（indirect），随 server 联动升至 v0.62.0。
 // 2026-10-21：1.26.9 → 1.26.10（GO-2026-6809 crypto/x509，同 server 联动，零代码逻辑改动）
+// 2026-10-29：golang.org/x/net 0.60.0 → 0.62.0（GO-2026-6860/6866，同 server 联动）
 go 1.26.10
 
 require (
 	github.com/gin-gonic/gin v1.10.1
 	github.com/wailsapp/wails/v2 v2.16.0
-	golang.org/x/crypto v0.57.0
-	golang.org/x/sys v0.48.0
+	golang.org/x/crypto v0.58.0
+	golang.org/x/sys v0.49.0
 	modernc.org/sqlite v1.34.5
 	stickynote v0.0.0
 )
@@ -70,8 +71,8 @@ require (
 	github.com/wailsapp/go-webview2 v1.0.22 // indirect
 	github.com/wailsapp/mimetype v1.4.1 // indirect
 	golang.org/x/arch v0.22.0 // indirect
-	golang.org/x/net v0.60.0 // indirect
-	golang.org/x/text v0.42.0 // indirect
+	golang.org/x/net v0.62.0 // indirect
+	golang.org/x/text v0.43.0 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	modernc.org/libc v1.55.3 // indirect

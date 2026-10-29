@@ -7,6 +7,9 @@ module stickynote
 // 2026-10-21：1.26.9 → 1.26.10（GO-2026-6809 标准库 crypto/x509：不信任被攻陷中间证书，
 //   修复版本 1.26.10；本项目真实暴露 = 备份目标 https:// WebDAV 的 x509.Certificate.Verify
 //   出站验证路径；零代码逻辑改动，工具链补丁升级 + 产物同名重出）
+// 2026-10-29：golang.org/x/net v0.60.0 → v0.62.0（GO-2026-6860 html 文本节点合并 O(n²) /
+//   GO-2026-6866 html 渲染祖先命名空间校验；本项目导入与消毒链经 x/net/html 解析用户内容，
+//   真实暴露，真修复不挂账；连带 x/crypto 0.58.0 / x/sys 0.49.0 / x/text 0.43.0）
 go 1.26.10
 
 require (
@@ -20,8 +23,8 @@ require (
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/pquerna/otp v1.5.0
 	github.com/studio-b12/gowebdav v0.13.0
-	golang.org/x/crypto v0.57.0
-	golang.org/x/net v0.60.0
+	golang.org/x/crypto v0.58.0
+	golang.org/x/net v0.62.0
 	modernc.org/sqlite v1.34.5
 )
 
@@ -52,8 +55,8 @@ require (
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.3.1 // indirect
 	golang.org/x/arch v0.22.0 // indirect
-	golang.org/x/sys v0.48.0 // indirect
-	golang.org/x/text v0.42.0 // indirect
+	golang.org/x/sys v0.49.0 // indirect
+	golang.org/x/text v0.43.0 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	modernc.org/libc v1.55.3 // indirect
