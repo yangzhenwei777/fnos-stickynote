@@ -173,14 +173,19 @@ func EnsureFolderSyncID(tx *sql.Tx, folderID int64) (string, error) {
 func BuildFolderPayload(tx *sql.Tx, folderID int64) (syncspec.FolderPayload, error) {
 	var p syncspec.FolderPayload
 	var syncID sql.NullString
-	err := tx.QueryRow(`SELECT sync_id, name, sort_order, version, created_at FROM note_folders WHERE id = ?`, folderID).
-		Scan(&syncID, &p.Name, &p.SortOrder, &p.Version, &p.CreatedAt)
+	var isEncrypted int
+	var hash string
+	err := tx.QueryRow(`SELECT sync_id, name, sort_order, version, created_at, is_encrypted, encrypt_password_hash FROM note_folders WHERE id = ?`, folderID).
+		Scan(&syncID, &p.Name, &p.SortOrder, &p.Version, &p.CreatedAt, &isEncrypted, &hash)
 	if err != nil {
 		return p, fmt.Errorf("build payload folder %d: %w", folderID, err)
 	}
 	if syncID.Valid {
 		p.SyncID = syncID.String
 	}
+	enc := isEncrypted != 0
+	p.IsEncrypted = &enc
+	p.EncryptPasswordHash = &hash
 	return p, nil
 }
 

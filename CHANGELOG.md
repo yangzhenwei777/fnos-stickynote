@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.3.1
+
+- Desktop/web API contract alignment: the "Export all" summary now reports "N notes in encrypted folders"; the note list re-sorts by updated time after saving on desktop; operations on locked folders return 423 with an "unlock first" message; restored notes expose `folder_locked`; moved notes return `version`; desktop `public-config` carries the default trash retention days.
+- No schema changes, no new dependencies.
+
+## 2.3.0
+
+- Folder encryption (access lock): any folder can be encrypted from its context menu. Once locked, its notes disappear from all notes/search/tags/trash/counts/exports; unlock per session with the folder password; relocks on logout, browser tab close, or desktop app exit. Orthogonal to per-note encryption. "Export all" follows the current unlock state. No in-app password reset — recovery is admin-side only.
+- Backend adds three columns (`is_encrypted`, `encrypt_password_hash`, `encrypted_at`), lock/unlock endpoints and HMAC unlock grants bound to user/token version/password fingerprint; every read path fails closed; locked-folder writes/deletes return 423 `FOLDER_LOCKED`; the desktop keeps unlock state in process memory; sync payloads carry the lock fields (absent = keep current lock state).
+- No new dependencies.
+
 ## 2.2.2
 
 - New: export a note as a long image (PNG) from the note view "more" menu — fixed 800px light poster layout with title/date header and footer, task-list checkboxes rendered as static symbols, same-origin images inlined automatically. The menu entry sits above "Download" with a divider; long code lines soft-wrap in the exported image instead of being clipped.

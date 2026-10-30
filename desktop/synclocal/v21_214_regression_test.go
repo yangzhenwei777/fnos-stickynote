@@ -34,7 +34,8 @@ func applyTxForTest(t *testing.T) *sql.Tx {
 	db.SetMaxOpenConns(1)
 	t.Cleanup(func() { db.Close() })
 	if _, err := db.Exec(`CREATE TABLE note_folders (id INTEGER PRIMARY KEY, user_id INTEGER, name TEXT,
-		sort_order INTEGER, sync_id TEXT, version INTEGER DEFAULT 0)`); err != nil {
+		sort_order INTEGER, sync_id TEXT, version INTEGER DEFAULT 0,
+		is_encrypted INTEGER DEFAULT 0, encrypt_password_hash TEXT DEFAULT '')`); err != nil {
 		t.Skipf("建表失败，跳过：%v", err)
 	}
 	tx, err := db.Begin()

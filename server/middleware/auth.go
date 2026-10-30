@@ -48,6 +48,7 @@ func RequireAuth() gin.HandlerFunc {
 		c.Set("userID", claims.UserID)
 		c.Set("username", claims.Username)
 		c.Set("role", user.Role)
+		c.Set("tokenVersion", claims.TokenVersion)
 		c.Next()
 	}
 }

@@ -49,8 +49,8 @@ func bumpFolderVersionTx(tx *sql.Tx, id int64) (int64, error) {
 func folderSyncIDPtr(s string) *string { return &s }
 
 // List 与 model.ListFolders 同源（虚拟默认项在首位，不落库不进事件）。
-func (s *FolderService) List(userID int64) ([]model.Folder, error) {
-	return model.ListFolders(userID)
+func (s *FolderService) List(userID int64, granted ...map[int64]struct{}) ([]model.Folder, error) {
+	return model.ListFolders(userID, granted...)
 }
 
 // Create 新建自定义文件夹。server 模式：事务内 CREATE 事件（version=1）。
@@ -186,6 +186,18 @@ func ErrorCodeForFolder(err error) string {
 		return "FOLDER_NAME_EXISTS"
 	case errors.Is(err, model.ErrFolderDefault):
 		return "FOLDER_IMMUTABLE"
+	case errors.Is(err, model.ErrFolderAlreadyEncrypted):
+		return "FOLDER_ALREADY_ENCRYPTED"
+	case errors.Is(err, model.ErrFolderNotEncrypted):
+		return "FOLDER_NOT_ENCRYPTED"
+	case errors.Is(err, model.ErrFolderLocked):
+		return "FOLDER_LOCKED"
+	case errors.Is(err, ErrWrongPassword):
+		return "WRONG_PASSWORD"
+	case errors.Is(err, ErrPasswordMismatch):
+		return "PASSWORD_MISMATCH"
+	case errors.Is(err, ErrPasswordTooLong), errors.Is(err, ErrPasswordInvalid):
+		return "PASSWORD_INVALID"
 	default:
 		return ErrorCodeFor(err)
 	}

@@ -128,6 +128,11 @@ type FolderPayload struct {
 	SortOrder int       `json:"sort_order"`
 	Version   int64     `json:"version"`
 	CreatedAt time.Time `json:"created_at"`
+	// v2.3.0 文件夹访问锁（增量字段，omitempty 兼容旧客户端）。
+	// 指针用于区分「旧客户端未携带」与「显式 false/空」：缺省必须保留服务端现状，
+	// 否则旧端一次 FOLDER 更新就会把锁定态覆盖为未加密。
+	IsEncrypted         *bool   `json:"is_encrypted,omitempty"`
+	EncryptPasswordHash *string `json:"encrypt_password_hash,omitempty"`
 }
 
 // FolderVersionRef FOLDER_ORDER 应用后的逐 folder 权威版本（桌面侧回写 + 后续 op 重定基，§50 同构）。

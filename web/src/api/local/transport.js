@@ -16,30 +16,47 @@ const svc = () => {
 }
 
 // Go facade 哨兵文案 → HTTP 状态（与服务端 handler 行为对齐）
+// 格式：[正则, status, code, 面向用户的中文文案]
+// ⚠ 新 sentinel 必须在此登记（开发纪律 A-15.3）：否则前端 `status === 423/429/409`
+//   分支在桌面静默失效，且裸英文哨兵会直接上屏。文案留空 = 沿用 Go 原文（中文导入错误）。
 const ERROR_RULES = [
-  [/version conflict/i, 409, 'VERSION_CONFLICT'],
-  [/quota exceeded/i, 403, 'QUOTA_EXCEEDED'],
-  [/wrong password/i, 403, 'WRONG_PASSWORD'],
-  [/folder not empty/i, 409, 'FOLDER_NOT_EMPTY'],
-  [/folder not found/i, 404, ''],
-  [/already encrypted|not encrypted|file type rejected|invalid folder|两次输入的密码不一致|密码过长/i, 400, ''],
+  [/version conflict/i, 409, 'VERSION_CONFLICT', '笔记已在其他设备修改，请刷新后重试'],
+  [/quota exceeded|已达到笔记数量上限/, 403, 'QUOTA_EXCEEDED', '已达到笔记数量上限，请先清理不需要的笔记'],
+  [/wrong password/i, 403, 'WRONG_PASSWORD', '密码错误'],
+  // v2.3.0 文件夹访问锁：桌面 ensureFolderUnlocked 返回 model.ErrFolderLocked
+  [/folder is locked/i, 423, 'FOLDER_LOCKED', '文件夹已加密，请先解锁'],
+  [/folder not empty/i, 409, 'FOLDER_NOT_EMPTY', '文件夹内还有笔记，无法删除'],
+  [/folder name exists/i, 409, 'FOLDER_NAME_EXISTS', '文件夹名称已存在'],
+  [/default folder is immutable/i, 400, 'FOLDER_IMMUTABLE', '默认文件夹不可修改'],
+  [/folder not found/i, 404, '', '文件夹不存在'],
+  [/already encrypted/i, 400, 'ALREADY_ENCRYPTED', '内容已加密'],
+  [/not encrypted/i, 400, 'NOT_ENCRYPTED', '内容未加密'],
+  [/file type rejected/i, 400, 'FILE_TYPE_REJECTED', '不支持的文件类型'],
+  [/invalid folder/i, 400, 'INVALID_FOLDER', '文件夹不存在'],
+  [/两次输入的密码不一致/, 400, 'PASSWORD_MISMATCH', '两次输入的密码不一致'],
+  [/密码过长/, 400, 'PASSWORD_INVALID', '密码过长'],
   // 导入（ImportNote 绑定）：Go 侧中文文案直接面向用户
-  [/仅支持 \.md|导入文件为空|导入文件过大/, 400, ''],
-  [/已达到笔记数量上限/, 403, 'QUOTA_EXCEEDED'],
-  [/no rows|笔记不存在|不存在或不在回收站/i, 404, '']
+  [/仅支持 \.md|导入文件为空|导入文件过大/, 400, '', ''],
+  [/no rows|笔记不存在|不存在或不在回收站/i, 404, '', '笔记不存在']
 ]
 
 function toHttpError (config, e) {
   const msg = (e && e.message) || String(e)
   let status = 500
   let code = ''
-  for (const [re, st, cd] of ERROR_RULES) {
-    if (re.test(msg)) { status = st; code = cd; break }
+  let userMsg = msg
+  for (const [re, st, cd, um] of ERROR_RULES) {
+    if (re.test(msg)) {
+      status = st
+      code = cd
+      if (um) userMsg = um
+      break
+    }
   }
   const err = new Error(msg)
   err.config = config
   err.response = {
-    data: code ? { error: msg, code } : { error: msg },
+    data: code ? { error: userMsg, code } : { error: userMsg },
     status, statusText: '', headers: {}, config
   }
   return err
@@ -105,12 +122,15 @@ const ROUTES = [
       return { data: await svc().UpdateEncrypted(idOf(m), b.title || '', b.tags || '', b.content || '', b.password, num(b.version, 0)) }
     }
     const note = await svc().UpdateNote(idOf(m), b.title || '', b.content || '', b.tags || '', num(b.version, 0))
-    return { data: { message: '更新成功', version: note.version } } // handler 非加密分支同形
+    // 与 handler/note.go 同形：**必须带 updated_at**（v21.150 E7 排序键的唯一时间源；
+    // 缺它会导致桌面端保存后列表不重排——2026-10-30 双端复核实锤）
+    return { data: { message: '更新成功', version: note.version, updated_at: note.updated_at } }
   }],
   ['DELETE', /^\/notes\/(\d+)$/, async m => ({ data: (await svc().DeleteNote(idOf(m)), { message: '删除成功' }) })],
   ['PUT', /^\/notes\/(\d+)\/folder$/, async (m, c) => {
-    await svc().MoveNote(idOf(m), normFolder(bodyOf(c).folder_id))
-    return { data: { message: '移动成功' } }
+    const version = await svc().MoveNote(idOf(m), normFolder(bodyOf(c).folder_id))
+    // 与 handler/note_move.go 同形：version 供前端同步乐观锁基点（§57）
+    return { data: { message: '移动成功', version } }
   }],
   ['POST', /^\/notes\/(\d+)\/copy$/, async (m, c) => ({
     data: await svc().CopyNote(idOf(m), normFolder(bodyOf(c).folder_id)), status: 201
@@ -139,6 +159,20 @@ const ROUTES = [
 
   ['GET', /^\/folders$/, async () => ({ data: { folders: await svc().ListFolders() } })],
   ['POST', /^\/folders$/, async (m, c) => ({ data: await svc().CreateFolder(bodyOf(c).name), status: 201 })],
+  // v2.3.0 文件夹访问锁
+  ['PUT', /^\/folders\/(\d+)\/encrypt$/, async (m, c) => {
+    const b = bodyOf(c)
+    const version = await svc().EncryptFolder(idOf(m), b.password, b.confirm_password)
+    return { data: { message: '加密成功', is_encrypted: true, version } }
+  }],
+  ['DELETE', /^\/folders\/(\d+)\/encrypt$/, async (m, c) => {
+    const version = await svc().DecryptFolder(idOf(m), bodyOf(c).password)
+    return { data: { message: '解密成功', is_encrypted: false, version } }
+  }],
+  ['POST', /^\/folders\/(\d+)\/unlock$/, async (m, c) => ({
+    data: await svc().UnlockFolder(idOf(m), bodyOf(c).password)
+  })],
+  ['GET', /^\/folders\/unlock-status$/, async () => ({ data: { folder_ids: await svc().ListFolderUnlockStatus() } })],
   ['PUT', /^\/folders\/(\d+)$/, async (m, c) => {
     const b = bodyOf(c)
     if (b.name) await svc().RenameFolder(idOf(m), b.name)

@@ -29,6 +29,8 @@ export function CreateFolder(arg1:string):Promise<model.Folder>;
 
 export function CreateNote(arg1:string,arg2:string,arg3:string,arg4:any):Promise<model.Note>;
 
+export function DecryptFolder(arg1:number,arg2:string):Promise<number>;
+
 export function DecryptNote(arg1:number,arg2:string):Promise<string>;
 
 export function DeleteFolder(arg1:number):Promise<void>;
@@ -36,6 +38,8 @@ export function DeleteFolder(arg1:number):Promise<void>;
 export function DeleteNote(arg1:number):Promise<void>;
 
 export function EmptyTrash():Promise<Record<string, any>>;
+
+export function EncryptFolder(arg1:number,arg2:string,arg3:string):Promise<number>;
 
 export function EncryptNote(arg1:number,arg2:string,arg3:string):Promise<void>;
 
@@ -57,6 +61,8 @@ export function GetVersion():Promise<string>;
 
 export function ImportNote(arg1:string,arg2:Array<number>,arg3:any):Promise<model.Note>;
 
+export function ListFolderUnlockStatus():Promise<Array<number>>;
+
 export function ListFolders():Promise<Array<model.Folder>>;
 
 export function ListNotes(arg1:number,arg2:number,arg3:string,arg4:string,arg5:string,arg6:any):Promise<model.NoteListResponse>;
@@ -71,7 +77,7 @@ export function Logout():Promise<void>;
 
 export function MoveFolder(arg1:number,arg2:string):Promise<void>;
 
-export function MoveNote(arg1:number,arg2:any):Promise<void>;
+export function MoveNote(arg1:number,arg2:any):Promise<number>;
 
 export function NotifyResume():Promise<Record<string, any>>;
 
@@ -116,6 +122,8 @@ export function SyncScheduleStatus():Promise<Record<string, any>>;
 export function SyncStatus():Promise<Record<string, any>>;
 
 export function TrashStats():Promise<Record<string, any>>;
+
+export function UnlockFolder(arg1:number,arg2:string):Promise<Record<string, any>>;
 
 export function UnlockLocal(arg1:string):Promise<boolean>;
 

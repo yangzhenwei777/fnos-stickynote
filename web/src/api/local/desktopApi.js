@@ -11,6 +11,12 @@ export function desktopBridgeAvailable () {
   return IS_DESKTOP && bridge() !== null
 }
 
+// v2.3.0 文件夹访问锁：桌面端解锁态以 Go 进程内存为准，页面刷新后回填 UI。
+export async function listFolderUnlockStatus () {
+  const ids = await callBridge('ListFolderUnlockStatus')
+  return Array.isArray(ids) ? ids : []
+}
+
 // formatPortableError 把 Go 侧哨兵错误映射为可读文案（其余原样透传，禁静默吞错）。
 // 哨兵源：backup/errors.go（BACKUP_*）+ desktop/portable（英文语义串）。
 export function formatPortableError (err) {

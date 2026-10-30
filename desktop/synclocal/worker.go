@@ -639,6 +639,10 @@ func (w *Worker) applyNoteChange(tx *sql.Tx, ch syncspec.ChangeDTO) error {
 	return nil
 }
 
+// FolderLockChangedHook v2.3.0：拉取到文件夹锁定态变化时通知桌面端清理本进程解锁授权。
+// 由 main 包注入（synclocal 不反向依赖 LocalService）；测试可为 nil。
+var FolderLockChangedHook func(folderID int64, encrypted bool)
+
 // applyFolderChange FOLDER CREATE/UPDATE/DELETE 应用（批次2，§18）。
 // DELETE 时本地引用该夹的笔记（含回收站行）统一改指默认文件夹（与服务端 §56 语义同构）。
 func (w *Worker) applyFolderChange(tx *sql.Tx, ch syncspec.ChangeDTO) error {
@@ -654,16 +658,48 @@ func (w *Worker) applyFolderChange(tx *sql.Tx, ch syncspec.ChangeDTO) error {
 	}
 	switch ch.Operation {
 	case "CREATE", "UPDATE":
+		encrypted := false
+		hash := ""
+		if p.IsEncrypted != nil {
+			encrypted = *p.IsEncrypted
+		}
+		if p.EncryptPasswordHash != nil {
+			hash = *p.EncryptPasswordHash
+		}
 		if missing {
-			if _, ierr := tx.Exec(`INSERT INTO note_folders (user_id, name, sort_order, sync_id, version)
-				VALUES (1, ?, ?, ?, ?)`, p.Name, p.SortOrder, p.SyncID, ch.ServerVersion); ierr != nil {
+			res, ierr := tx.Exec(`INSERT INTO note_folders (user_id, name, sort_order, sync_id, version, is_encrypted, encrypt_password_hash)
+				VALUES (1, ?, ?, ?, ?, ?, ?)`,
+				p.Name, p.SortOrder, p.SyncID, ch.ServerVersion, boolToInt(encrypted), hash)
+			if ierr != nil {
 				return ierr
 			}
+			existID, _ = res.LastInsertId()
 		} else {
-			if _, uerr := tx.Exec(`UPDATE note_folders SET name = ?, sort_order = ?, version = ? WHERE id = ?`,
-				p.Name, p.SortOrder, ch.ServerVersion, existID); uerr != nil {
+			// 旧服务端/旧载荷缺字段 → 保留本地现状，绝不能覆盖为未加密。
+			if p.IsEncrypted == nil || p.EncryptPasswordHash == nil {
+				var curEnc int
+				var curHash string
+				if qerr := tx.QueryRow(`SELECT is_encrypted, encrypt_password_hash FROM note_folders WHERE id = ?`, existID).
+					Scan(&curEnc, &curHash); qerr != nil {
+					return qerr
+				}
+				if p.IsEncrypted == nil {
+					encrypted = curEnc != 0
+					if p.EncryptPasswordHash == nil {
+						hash = curHash
+					}
+				}
+			}
+			if !encrypted {
+				hash = ""
+			}
+			if _, uerr := tx.Exec(`UPDATE note_folders SET name = ?, sort_order = ?, version = ?, is_encrypted = ?, encrypt_password_hash = ? WHERE id = ?`,
+				p.Name, p.SortOrder, ch.ServerVersion, boolToInt(encrypted), hash, existID); uerr != nil {
 				return uerr
 			}
+		}
+		if FolderLockChangedHook != nil {
+			FolderLockChangedHook(existID, encrypted)
 		}
 	case "DELETE":
 		if !missing {
@@ -673,9 +709,19 @@ func (w *Worker) applyFolderChange(tx *sql.Tx, ch syncspec.ChangeDTO) error {
 			if _, derr := tx.Exec(`DELETE FROM note_folders WHERE id = ?`, existID); derr != nil {
 				return derr
 			}
+			if FolderLockChangedHook != nil {
+				FolderLockChangedHook(existID, false)
+			}
 		}
 	}
 	return nil
+}
+
+func boolToInt(v bool) int {
+	if v {
+		return 1
+	}
+	return 0
 }
 
 // applyFolderOrder 集合级重排应用：按权威版本表重写 sort_order/version（单调不回退）。

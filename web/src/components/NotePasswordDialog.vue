@@ -7,8 +7,9 @@
   >
     <template v-if="mode === 'encrypt'">
       <!-- v21.107 P2-16：加密不可恢复警示——零知识设计此前只字未提，用户以为管理员能帮忙找回 -->
+      <!-- v2.3.0：文案改为可注入（文件夹访问锁与笔记加密的语义不同） -->
       <p style="margin:0 0 12px;font-size:12px;line-height:1.6;color:var(--el-color-warning,#e6a23c)">
-        重要：笔记加密后服务器只保存密文，忘记密码内容将无法恢复，管理员也无法找回，请妥善保管密码。
+        {{ warningText || '重要：笔记加密后服务器只保存密文，忘记密码内容将无法恢复，管理员也无法找回，请妥善保管密码。' }}
       </p>
       <el-form :label-width="isMobile ? 'auto' : '80px'">
         <el-form-item label="密码">
@@ -70,6 +71,10 @@ const props = defineProps({
     default: 'view'
   },
   title: {
+    type: String,
+    default: ''
+  },
+  warningText: {
     type: String,
     default: ''
   },

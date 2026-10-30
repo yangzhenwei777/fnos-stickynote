@@ -16,10 +16,10 @@ beforeEach(() => {
     ListTags: vi.fn().mockResolvedValue(['A', 'B']),
     GetNote: vi.fn().mockResolvedValue({ id: 5, title: 'x' }),
     CreateNote: vi.fn().mockResolvedValue({ id: 6, version: 1 }),
-    UpdateNote: vi.fn().mockResolvedValue({ id: 5, version: 7 }),
+    UpdateNote: vi.fn().mockResolvedValue({ id: 5, version: 7, updated_at: '2026-10-30T10:00:00Z' }),
     UpdateEncrypted: vi.fn().mockResolvedValue({ id: 5, version: 8 }),
     DeleteNote: vi.fn().mockResolvedValue(undefined),
-    MoveNote: vi.fn().mockResolvedValue(undefined),
+    MoveNote: vi.fn().mockResolvedValue(9),
     CopyNote: vi.fn().mockResolvedValue({ id: 7, version: 1 }),
     BatchDelete: vi.fn().mockResolvedValue({ message: '已删除 2 篇笔记', deleted: 2, total: 2 }),
     EncryptNote: vi.fn().mockResolvedValue(undefined),
@@ -27,7 +27,7 @@ beforeEach(() => {
     VerifyEncrypt: vi.fn().mockResolvedValue({ id: 5, content: '<p>明文</p>', is_encrypted: true }),
     ListTrash: vi.fn().mockResolvedValue({ notes: [], total: 0 }),
     TrashStats: vi.fn().mockResolvedValue({ count: 0, upload_bytes: 0 }),
-    RestoreNote: vi.fn().mockResolvedValue({ message: '已恢复', folder: '我的笔记' }),
+    RestoreNote: vi.fn().mockResolvedValue({ message: '已恢复', folder: '我的笔记', folder_locked: false }),
     PermanentDeleteNote: vi.fn().mockResolvedValue({ message: '已彻底删除' }),
     EmptyTrash: vi.fn().mockResolvedValue({ message: '回收站已清空', deleted: 3 }),
     ListFolders: vi.fn().mockResolvedValue([{ id: null, name: '我的笔记' }]),
@@ -51,10 +51,19 @@ describe('LocalTransport 路由与形状', () => {
     expect(r.data.total).toBe(1)
   })
 
-  it('PUT /notes/:id 非加密 → handler 同形 {message,version}', async () => {
+  // ⭐ 契约基准 = server/handler（开发纪律 A-15.1）。期望值必须对照 handler 源码写，
+  //   不得照抄 transport 实现——此前照抄导致 updated_at 缺失被锁成"同形"（假绿）。
+  it('PUT /notes/:id 非加密 → handler 同形 {message, version, updated_at}', async () => {
     const r = await call({ method: 'put', url: '/api/notes/5', data: JSON.stringify({ title: 't', content: '', tags: '', version: 1 }) })
     expect(F().UpdateNote).toHaveBeenCalledWith(5, 't', '', '', 1)
-    expect(r.data).toEqual({ message: '更新成功', version: 7 })
+    // handler/note.go：{"message":"更新成功","version":…,"updated_at":…}（E7 排序键唯一时间源）
+    expect(r.data).toEqual({ message: '更新成功', version: 7, updated_at: '2026-10-30T10:00:00Z' })
+  })
+
+  it('PUT /notes/:id/folder → handler 同形 {message, version}', async () => {
+    const r = await call({ method: 'put', url: '/api/notes/5/folder', data: JSON.stringify({ folder_id: 3 }) })
+    expect(F().MoveNote).toHaveBeenCalledWith(5, 3)
+    expect(r.data).toEqual({ message: '移动成功', version: 9 })
   })
 
   it('PUT /notes/:id 带 password → 走 UpdateEncrypted 并透传 note', async () => {
@@ -110,6 +119,39 @@ describe('LocalTransport 路由与形状', () => {
     await expect(call({ method: 'delete', url: '/api/folders/3' })).rejects.toMatchObject({
       response: { status: 409, data: { code: 'FOLDER_NOT_EMPTY' } }
     })
+  })
+
+  // ⭐ v2.3.0 回归（2026-10-30 双端复核实锤）：文件夹锁哨兵漏映射 → 桌面 500，
+  //   前端 423 分支（删除锁定夹提示"先解锁"）全部失效，且裸英文上屏。
+  it('Go 哨兵 "folder is locked" → 423 + FOLDER_LOCKED + 中文文案', async () => {
+    F().DeleteFolder.mockRejectedValueOnce(new Error('folder is locked'))
+    await expect(call({ method: 'delete', url: '/api/folders/3' })).rejects.toMatchObject({
+      response: { status: 423, data: { code: 'FOLDER_LOCKED', error: '文件夹已加密，请先解锁' } }
+    })
+    F().MoveNote.mockRejectedValueOnce(new Error('folder is locked'))
+    await expect(call({ method: 'put', url: '/api/notes/5/folder', data: JSON.stringify({ folder_id: 3 }) }))
+      .rejects.toMatchObject({ response: { status: 423 } })
+  })
+
+  it('文件夹重名/默认夹不可改 → 409/400 且中文文案', async () => {
+    F().CreateFolder.mockRejectedValueOnce(new Error('folder name exists'))
+    await expect(call({ method: 'post', url: '/api/folders', data: JSON.stringify({ name: '夹' }) }))
+      .rejects.toMatchObject({ response: { status: 409, data: { code: 'FOLDER_NAME_EXISTS', error: '文件夹名称已存在' } } })
+    F().RenameFolder.mockRejectedValueOnce(new Error('default folder is immutable'))
+    await expect(call({ method: 'put', url: '/api/folders/1', data: JSON.stringify({ name: 'x' }) }))
+      .rejects.toMatchObject({ response: { status: 400, data: { code: 'FOLDER_IMMUTABLE' } } })
+  })
+
+  it('密码错 → 403 且 data.error 为中文（禁裸英文哨兵上屏）', async () => {
+    F().VerifyEncrypt.mockRejectedValueOnce(new Error('wrong password'))
+    await expect(call({ method: 'post', url: '/api/notes/5/verify-encrypt', data: '{}' }))
+      .rejects.toMatchObject({ response: { status: 403, data: { code: 'WRONG_PASSWORD', error: '密码错误' } } })
+  })
+
+  it('POST /notes/:id/restore → 透传 folder_locked（handler 同形）', async () => {
+    F().RestoreNote.mockResolvedValueOnce({ message: '已恢复', folder: '机密', folder_locked: true })
+    const r = await call({ method: 'post', url: '/api/notes/5/restore' })
+    expect(r.data).toEqual({ message: '已恢复', folder: '机密', folder_locked: true })
   })
 
   it('未接线端点 → **reject** 501（绝不返回"成功形状的非 2xx"）', async () => {

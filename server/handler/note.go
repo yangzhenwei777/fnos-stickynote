@@ -50,7 +50,7 @@ func ListNotes(c *gin.Context) {
 		}
 	}
 
-	result, err := model.ListNotes(userID.(int64), page, pageSize, search, tag, sortBy, folderID)
+	result, err := model.ListNotes(userID.(int64), page, pageSize, search, tag, sortBy, folderID, folderGrants(c))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取笔记列表失败"})
 		return
@@ -116,6 +116,10 @@ func CreateNote(c *gin.Context) {
 	if folderID != nil && *folderID == 0 {
 		folderID = nil
 	}
+	if folderID != nil && folderRequiresUnlock(c, *folderID) {
+		respondFolderLocked(c)
+		return
+	}
 
 	// P2 批次1（§129 门禁）：写路径委托 app Facade——事务内同产 ChangeLog CREATE 事件。
 	note, err := app.NewServerNoteService(limit).CreateNote(userID.(int64), sanitizeNoteTitle(req.Title), sanitizeNoteContent(req.Content), req.Tags, folderID)
@@ -147,6 +151,13 @@ func GetNote(c *gin.Context) {
 	note, err := model.GetNote(id, userID.(int64))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "笔记不存在"})
+		return
+	}
+	if locked, lerr := model.FolderLockedForNote(id, userID.(int64), folderGrants(c)); lerr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取笔记失败"})
+		return
+	} else if locked {
+		respondFolderLocked(c)
 		return
 	}
 
@@ -257,7 +268,7 @@ func DeleteNote(c *gin.Context) {
 
 func GetAllTags(c *gin.Context) {
 	userID, _ := c.Get("userID")
-	tags, err := model.GetAllTags(userID.(int64))
+	tags, err := model.GetAllTags(userID.(int64), folderGrants(c))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取标签失败"})
 		return

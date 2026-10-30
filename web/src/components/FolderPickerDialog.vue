@@ -36,7 +36,8 @@
         @click="selected = String(f.id)"
       >
         <el-icon class="fp-item-icon">
-          <Folder />
+          <Lock v-if="f.is_encrypted" />
+          <Folder v-else />
         </el-icon>
         <span class="fp-name">{{ f.name }}</span>
         <el-icon
@@ -70,7 +71,7 @@
 
 <script setup>
 import { ref, watch } from 'vue'
-import { Document, Folder, Check } from '@element-plus/icons-vue'
+import { Document, Folder, Check, Lock } from '@element-plus/icons-vue'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },

@@ -1,5 +1,5 @@
 appname               = stickynote
-version               = 2.2.2
+version               = 2.3.1
 display_name          = Sticky note
 platform              = x86
 # checksum 字段由 fnpack build 自动计算注入，请勿手动填写
@@ -11,6 +11,10 @@ desktop_uidir         = ui
 desktop_applaunchname = stickynote.Application
 desc                  = Sticky note 便签应用
 changelog             = """
+2.3.1 — 双端契约一致性修复：桌面端与网页端 API 契约对齐——【导出全部】提示补「N 条加密文件夹中的笔记」；桌面保存后列表按更新时间重排恢复；锁定文件夹删除/移动返回 423 并给中文「先解锁」引导；恢复笔记补 folder_locked；移动笔记补 version；桌面 public-config 补回收站保留天数默认值。零 schema、零新增依赖。
+2.3.0 — 文件夹加密（访问锁）：
+【功能】自定义文件夹菜单新增【加密/解密】；锁定后该文件夹笔记在全部笔记/搜索/标签/回收站/计数/导出中隐藏；点击锁定文件夹输入密码后本会话解锁；登出、关闭浏览器标签页或桌面应用即回锁；与单篇笔记加密正交；【导出全部】按当前解锁状态自动包含/排除；不提供应用内密码重置/找回，仅管理员手工清库恢复。
+【实现】note_folders 增 is_encrypted/encrypt_password_hash/encrypted_at；锁定/解锁接口 + HMAC 解锁令牌（绑定 user/token_version/密码哈希指纹）；全读出口 fail-closed 过滤；锁定夹写入/删除 423 FOLDER_LOCKED；桌面进程内存解锁态；同步载荷增量字段（缺省=保留锁定态）。零新增依赖。
 2.2.2 — 导出为长图：预览页「更多」新增导出 PNG 长图（800px 白底海报、超长分窗编码、dpr 自适应、加密笔记先验口令）；表格列宽持久化并在编辑/预览/长图/Markdown 四处一致；Markdown 导出图片 base64 内联；桌面端批量导出；长图代码字体根治；钉版 WebView2 升级 156。
 2.2.1 — 用户反馈修复：预览空行高度对齐编辑态；TXT 导入按行独立成段（选中单行设格式不再波及整段）；Markdown 粘贴迁移官方编辑器钩子单通道插入并收紧触发条件；导入笔记落入当前选中文件夹；新增备份执行记录清除（仅清已终结记录）；长英文串预览自动断行。
 2.2.0 — 统一网关模式：unix socket + TCP 双轨监听；桌面端会话恢复与同步稳定性改进；CORS 兼容 fnOS App / FN Connect 中继形态；安全加固与依赖更新。

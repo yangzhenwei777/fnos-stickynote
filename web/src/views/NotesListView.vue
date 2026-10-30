@@ -90,9 +90,10 @@
                 :key="f.id"
                 :command="f.id"
               >
-                <!-- v21.97：图标对齐 PC 端侧栏（自定义文件夹=Folder） -->
+                <!-- v21.97：图标对齐 PC 端侧栏（自定义文件夹=Folder；v2.3.0 锁定=Lock） -->
                 <el-icon class="nl-f-new-icon">
-                  <Folder />
+                  <Lock v-if="folderStore.isFolderLocked(f)" />
+                  <Folder v-else />
                 </el-icon>
                 <span class="nl-f-item">{{ f.name }}</span>
                 <el-icon
@@ -155,7 +156,22 @@
             <span
               class="mf-name"
               style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-            >{{ f.name }}</span>
+            >
+              <el-icon
+                v-if="folderStore.isFolderLocked(f)"
+                style="vertical-align:-2px;margin-right:4px"
+              >
+                <Lock />
+              </el-icon>{{ f.name }}
+            </span>
+            <el-button
+              v-if="!f.is_default"
+              size="small"
+              text
+              @click="f.is_encrypted ? folderSecurity.openDecrypt(f) : folderSecurity.openEncrypt(f)"
+            >
+              {{ f.is_encrypted ? '解密' : '加密' }}
+            </el-button>
             <el-button
               size="small"
               text
@@ -498,15 +514,17 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { Plus, Document, Search, Edit, Delete, Clock, Tickets, Download, Upload, Folder, Files, ArrowDown, Check, Setting } from '@element-plus/icons-vue'
+import { Plus, Document, Search, Edit, Delete, Clock, Tickets, Download, Upload, Folder, Files, ArrowDown, Check, Setting, Lock } from '@element-plus/icons-vue'
 import { getNotes, createNote, deleteNote, exportNote, exportAllNotes, batchDeleteNotes, batchExportNotes } from '@/api/note'
 import SyncInitBanner from '@/components/SyncInitBanner.vue'
 import NotePager from '@/components/NotePager.vue'
 import { useFolderStore } from '@/stores/folder'
+import { useFolderSecurityStore } from '@/stores/folderSecurity'
 import api from '@/api/request'
 import { message } from '@/utils/message'
 import DOMPurify from 'dompurify'
 import { stripHtml, splitTags, formatDate } from '@/utils/note'
+import { buildSkippedParts, joinSkipped, buildDesktopExportMessage, buildWebExportAllMessage } from '@/utils/exportSummary'
 import { importNoteFile } from '@/composables/useNoteImport'
 import { IS_DESKTOP } from '@/api/local/transport'
 import { exportNoteMD, exportNotesZip } from '@/api/local/desktopApi'
@@ -521,6 +539,7 @@ const router = useRouter()
 // v21.89 文件夹：与 AppSidebar/MainLayout 共享同一 store；标题旁下拉切换，
 // 列表内容跟随 activeFolderId 过滤（后端 folder_id 参数 v21.86 已支持）。
 const folderStore = useFolderStore()
+const folderSecurity = useFolderSecurityStore()
 const nlFolderLabel = computed(() => {
   if (folderStore.activeFolderId === 'all') return '全部笔记'
   return folderStore.activeFolder?.name || '我的笔记'
@@ -537,6 +556,19 @@ function handleFolderChange(cmd) {
   if (cmd === '__manage_folders__') {
     manageFoldersVisible.value = true
     return
+  }
+  // v2.3.0：锁定文件夹先验密，取消不切换
+  if (typeof cmd === 'number') {
+    const f = folderStore.folders.find(x => x.id === cmd)
+    if (f && folderStore.isFolderLocked(f)) {
+      folderSecurity.openUnlock(f, () => {
+        folderStore.selectFolder(cmd)
+        currentPage.value = 1
+        loadNotes()
+        loadTags()
+      })
+      return
+    }
   }
   folderStore.selectFolder(cmd)
   currentPage.value = 1
@@ -572,6 +604,8 @@ async function removeFolderConfirm(f) {
     await loadNotes()
   } else if (res.notEmpty) {
     message.error('文件夹内还有笔记，请先移出或删除其中的笔记后再删除文件夹')
+  } else if (res.locked) {
+    message.error('文件夹已加密，请先解密后再删除')
   }
 }
 
@@ -642,6 +676,12 @@ onMounted(async () => {
 watch(() => folderStore.activeFolderId, () => {
   currentPage.value = 1
   loadNotes()
+})
+
+// v2.3.0：文件夹加密/解密/解锁后刷新列表与标签
+watch(() => folderStore.notesRefreshTick, () => {
+  loadNotes()
+  loadTags()
 })
 
 // baseListParams 列表公共过滤参数（页码/页大小由调用方按模式追加）。
@@ -848,19 +888,21 @@ async function exportAll() {
       // v2.2.2 R6：原生另存为，Go 侧直接落盘 zip（避免浏览器静默下载不可达）
       const r = await exportNotesZip([], true)
       if (r?.cancelled) return
-      const skipped = Number(r?.skipped || 0)
-      const base = `已导出 ${r?.exported ?? 0} 篇笔记`
-      message.success(skipped > 0 ? `${base}，跳过 ${skipped} 篇加密笔记` : `${base}，已保存到 ${r?.path || '所选位置'}`)
+      // 开发纪律 A-15.2：桌面读 body（folders_skipped），Web 读 header，文案共用 exportSummary
+      message.success(buildDesktopExportMessage({
+        exported: r?.exported,
+        skipped: r?.skipped,
+        foldersSkipped: r?.folders_skipped,
+        savedPath: r?.path
+      }))
       return
     }
     const resp = await exportAllNotes()
     saveBlob(resp, 'Sticky-note-导出.zip')
-    const skipped = resp.headers['x-encrypted-skipped']
-    if (skipped && parseInt(skipped) > 0) {
-      message.success('导出成功，已跳过 ' + skipped + ' 个加密笔记')
-    } else {
-      message.success('导出成功，已导出全部笔记')
-    }
+    message.success(buildWebExportAllMessage({
+      encryptedSkipped: resp.headers?.['x-encrypted-skipped'],
+      folderSkipped: resp.headers?.['x-folder-skipped']
+    }))
   } catch (e) {
     message.errorOnce(e.response?.data?.error || e?.message || '导出失败')
   } finally {
@@ -925,20 +967,23 @@ async function batchExport() {
       // v2.2.2 R6：原生另存为，Go 侧直接落盘 zip
       const r = await exportNotesZip(ids, false)
       if (r?.cancelled) return
-      const skipped = Number(r?.skipped || 0)
-      const base = `已导出 ${r?.exported ?? 0} 篇笔记`
-      message.success(skipped > 0 ? `${base}，跳过 ${skipped} 篇加密笔记` : `${base}，已保存到 ${r?.path || '所选位置'}`)
+      message.success(buildDesktopExportMessage({
+        exported: r?.exported,
+        skipped: r?.skipped,
+        foldersSkipped: r?.folders_skipped,
+        savedPath: r?.path
+      }))
       selectedIds.value = new Set()
       batchMode.value = false
       return
     }
     const resp = await batchExportNotes(ids)
     saveBlob(resp, 'Sticky-note-批量导出.zip')
-    // v21.58 F-12：按后端 header 提示实际导出数量与跳过的加密笔记数
-    const skipped = Number(resp.headers?.['x-encrypted-skipped'] || 0)
-    if (skipped > 0) {
-      const exported = Number(resp.headers?.['x-exported-count'] || ids.length - skipped)
-      message.success(`已导出 ${exported} 篇笔记，跳过 ${skipped} 篇加密笔记`)
+    // v21.58 F-12 / v2.3.0：按后端 header 提示实际导出数量与跳过项（文案与桌面共用）
+    const parts = buildSkippedParts(resp.headers?.['x-encrypted-skipped'], resp.headers?.['x-folder-skipped'])
+    if (parts.length) {
+      const exported = Number(resp.headers?.['x-exported-count'] || ids.length - Number(resp.headers?.['x-encrypted-skipped'] || 0))
+      message.success(`已导出 ${exported} 篇笔记，${joinSkipped(parts)}`)
     } else {
       message.success(`已导出 ${ids.length} 篇笔记`)
     }

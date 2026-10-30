@@ -113,7 +113,8 @@
           :class="{ active: isNotesRoute && activeFolderId === f.id }"
         >
           <el-icon class="sb-folder-icon">
-            <Folder />
+            <Lock v-if="folderStore.isFolderLocked(f)" />
+            <Folder v-else />
           </el-icon>
           <span
             class="sb-folder-name"
@@ -135,6 +136,18 @@
               <el-dropdown-menu>
                 <el-dropdown-item command="rename">
                   <el-icon><EditPen /></el-icon>重命名
+                </el-dropdown-item>
+                <el-dropdown-item
+                  v-if="!f.is_encrypted"
+                  command="encrypt"
+                >
+                  <el-icon><Lock /></el-icon>加密
+                </el-dropdown-item>
+                <el-dropdown-item
+                  v-else
+                  command="decrypt"
+                >
+                  <el-icon><Unlock /></el-icon>解密
                 </el-dropdown-item>
                 <el-dropdown-item
                   command="delete"
@@ -328,6 +341,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import { useFolderStore } from '@/stores/folder'
+import { useFolderSecurityStore } from '@/stores/folderSecurity'
 import { useTheme } from '@/composables/useTheme'
 import { message } from '@/utils/message'
 import DragResizer from '@/components/DragResizer.vue'
@@ -338,6 +352,7 @@ const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
 const folderStore = useFolderStore()
+const folderSecurity = useFolderSecurityStore()
 const { isDark, toggleTheme } = useTheme()
 const config = useConfigStore() // F-6：侧栏 LOGO 文字读取全局 siteTitle，随高级设置即时更新
 
@@ -374,6 +389,18 @@ function showAllNotes() {
   router.push('/')
 }
 function selectFolder(key) {
+  if (typeof key === 'number') {
+    const f = folderStore.folders.find(x => x.id === key)
+    if (f && folderStore.isFolderLocked(f)) {
+      // v2.3.0：点击锁定文件夹先验密，取消则不切换选中项
+      folderSecurity.openUnlock(f, () => {
+        folderStore.selectFolder(key)
+        router.push('/')
+        folderStore.bumpNotesRefresh()
+      })
+      return
+    }
+  }
   folderStore.selectFolder(key)
   router.push('/')
 }
@@ -430,6 +457,10 @@ async function submitDialog() {
 async function handleFolderCmd(cmd, f) {
   if (cmd === 'rename') {
     openRenameDialog(f)
+  } else if (cmd === 'encrypt') {
+    folderSecurity.openEncrypt(f)
+  } else if (cmd === 'decrypt') {
+    folderSecurity.openDecrypt(f)
   } else if (cmd === 'delete') {
     await confirmDeleteFolder(f)
   } else if (cmd === 'up' || cmd === 'down' || cmd === 'top' || cmd === 'bottom') {
@@ -452,6 +483,11 @@ async function confirmDeleteFolder(f) {
   } else if (res.notEmpty) {
     // 用户需求：文件夹内还有笔记时，弹窗提示且只显示确定按钮
     ElMessageBox.alert('文件夹内还有笔记，无法删除。', '提示', {
+      confirmButtonText: '确定',
+      type: 'warning'
+    })
+  } else if (res.locked) {
+    ElMessageBox.alert('文件夹已加密，请先解锁后再删除。', '提示', {
       confirmButtonText: '确定',
       type: 'warning'
     })

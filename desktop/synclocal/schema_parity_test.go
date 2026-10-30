@@ -24,7 +24,7 @@ var requiredCols = map[string][]string{
 	"notes": {"id", "user_id", "title", "content", "content_text", "tags", "is_encrypted",
 		"encrypt_password_hash", "encrypted_content", "created_at", "updated_at", "deleted_at",
 		"version", "folder_id", "sync_id", "trash_upload_bytes"},
-	"note_folders": {"id", "user_id", "name", "sort_order", "created_at", "sync_id", "version"},
+	"note_folders": {"id", "user_id", "name", "sort_order", "created_at", "sync_id", "version", "is_encrypted", "encrypt_password_hash"},
 	"uploads":      {"filename", "user_id", "size", "status", "sha256"},
 	"note_uploads": {"note_id", "filename"},
 	"note_tags":    {"note_id", "tag"},

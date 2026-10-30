@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"database/sql"
 	"net/http"
 	"strconv"
 
@@ -18,7 +19,7 @@ func ListTrash(c *gin.Context) {
 	userID, _ := c.Get("userID")
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
-	result, err := model.ListTrashedNotes(userID.(int64), page, pageSize)
+	result, err := model.ListTrashedNotes(userID.(int64), page, pageSize, folderGrants(c))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取回收站失败"})
 		return
@@ -55,10 +56,17 @@ func RestoreNote(c *gin.Context) {
 	// v21.107 P2-9：恢复响应携带去向文件夹名（原文件夹已删时模型层已把 folder_id 置 NULL=我的笔记），
 	// 前端提示「已恢复到「X」」——此前用户停留在别的文件夹视图时以为笔记丢了。
 	folder := "我的笔记"
+	locked := false
 	if name, ferr := model.GetNoteFolderName(id); ferr == nil && name != "" {
 		folder = name
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "已恢复", "folder": folder})
+	var fid sql.NullInt64
+	if ferr := database.DB.QueryRow("SELECT folder_id FROM notes WHERE id = ? AND user_id = ?", id, userID.(int64)).Scan(&fid); ferr == nil && fid.Valid {
+		if folderRequiresUnlock(c, fid.Int64) {
+			locked = true
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "已恢复", "folder": folder, "folder_locked": locked})
 }
 
 // PermanentDeleteNote 彻底删除回收站中的笔记（不可恢复）。

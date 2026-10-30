@@ -138,11 +138,15 @@ func upgrade_v1_0_0(tx *sql.Tx) error {
 		user_id INTEGER NOT NULL,
 		name TEXT NOT NULL,
 		sort_order INTEGER NOT NULL DEFAULT 0,
+		is_encrypted INTEGER NOT NULL DEFAULT 0,
+		encrypt_password_hash TEXT NOT NULL DEFAULT '',
+		encrypted_at DATETIME DEFAULT NULL,
 		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 	)`,
 		`CREATE INDEX IF NOT EXISTS idx_note_folders_user_id ON note_folders(user_id)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_note_folders_user_name ON note_folders(user_id, name)`,
+		`CREATE INDEX IF NOT EXISTS idx_note_folders_user_locked ON note_folders(user_id, is_encrypted)`,
 		`CREATE TABLE IF NOT EXISTS configs (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			key TEXT NOT NULL UNIQUE,
@@ -407,6 +411,35 @@ func ensureSchema() error {
 	}
 	if _, err := DB.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_note_folders_user_name ON note_folders(user_id, name)"); err != nil {
 		return fmt.Errorf("failed to create note_folders name unique index: %w", err)
+	}
+
+	// v2.3.0 文件夹访问锁（老库幂等补列；新库 DDL 已含）
+	if has, err := columnExists("note_folders", "is_encrypted"); err != nil {
+		return err
+	} else if !has {
+		if _, err := DB.Exec("ALTER TABLE note_folders ADD COLUMN is_encrypted INTEGER NOT NULL DEFAULT 0"); err != nil {
+			return fmt.Errorf("failed to add note_folders.is_encrypted: %w", err)
+		}
+		logger.Info("Schema patched: note_folders.is_encrypted added")
+	}
+	if has, err := columnExists("note_folders", "encrypt_password_hash"); err != nil {
+		return err
+	} else if !has {
+		if _, err := DB.Exec("ALTER TABLE note_folders ADD COLUMN encrypt_password_hash TEXT NOT NULL DEFAULT ''"); err != nil {
+			return fmt.Errorf("failed to add note_folders.encrypt_password_hash: %w", err)
+		}
+		logger.Info("Schema patched: note_folders.encrypt_password_hash added")
+	}
+	if has, err := columnExists("note_folders", "encrypted_at"); err != nil {
+		return err
+	} else if !has {
+		if _, err := DB.Exec("ALTER TABLE note_folders ADD COLUMN encrypted_at DATETIME DEFAULT NULL"); err != nil {
+			return fmt.Errorf("failed to add note_folders.encrypted_at: %w", err)
+		}
+		logger.Info("Schema patched: note_folders.encrypted_at added")
+	}
+	if _, err := DB.Exec("CREATE INDEX IF NOT EXISTS idx_note_folders_user_locked ON note_folders(user_id, is_encrypted)"); err != nil {
+		return fmt.Errorf("failed to create note_folders lock index: %w", err)
 	}
 
 	// ② notes.folder_id 列：NULL = 默认"我的笔记"（老笔记自动归入默认，无需回填）

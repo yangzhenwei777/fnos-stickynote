@@ -30,6 +30,13 @@ func ExportNote(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "笔记不存在"})
 		return
 	}
+	if locked, lerr := model.FolderLockedForNote(id, userID.(int64), folderGrants(c)); lerr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取笔记失败"})
+		return
+	} else if locked {
+		respondFolderLocked(c)
+		return
+	}
 
 	var content string
 	if note.IsEncrypted {
@@ -82,20 +89,25 @@ func ExportNote(c *gin.Context) {
 
 func ExportAllNotes(c *gin.Context) {
 	userID, _ := c.Get("userID")
-	notes, err := model.ListAllNotesForExport(userID.(int64))
+	grants := folderGrants(c)
+	notes, err := model.ListAllNotesForExport(userID.(int64), grants)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取笔记列表失败"})
 		return
 	}
 
-	// v20.0：统计跳过的加密笔记数
+	// v20.0：统计跳过的加密笔记数；v2.3.0：只统计可见范围
 	var skipped int
-	model.CountEncryptedNotes(userID.(int64), &skipped)
+	model.CountEncryptedNotes(userID.(int64), &skipped, grants)
+	folderSkipped, _ := model.LockedNoteCount(userID.(int64), grants)
 
 	filename := "便签导出-" + time.Now().Format("20060102-150405") + ".zip"
 	setDownloadHeaders(c, filename, "application/zip")
 	if skipped > 0 {
 		c.Header("X-Encrypted-Skipped", strconv.Itoa(skipped))
+	}
+	if folderSkipped > 0 {
+		c.Header("X-Folder-Skipped", strconv.Itoa(folderSkipped))
 	}
 
 	// v2.2.2 R6：zip 构造下沉 notetext（桌面导出绑定共用同一实现）。
@@ -169,7 +181,7 @@ func BatchExportNotes(c *gin.Context) {
 		return
 	}
 
-	notes, err := model.ListNotesByIDs(req.IDs, userID.(int64))
+	notes, err := model.ListNotesByIDs(req.IDs, userID.(int64), folderGrants(c))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取笔记失败"})
 		return

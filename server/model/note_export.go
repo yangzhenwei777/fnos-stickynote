@@ -4,10 +4,13 @@ import (
 	"stickynote/database"
 )
 
-func ListAllNotesForExport(userID int64) ([]Note, error) {
+func ListAllNotesForExport(userID int64, granted ...map[int64]struct{}) ([]Note, error) {
+	grant := firstGranted(granted)
+	lockCond, lockArgs := FolderLockCondition("", userID, grant)
+	args := append([]interface{}{userID}, lockArgs...)
 	rows, err := database.DB.Query(
-		"SELECT id, user_id, title, content, tags, is_encrypted, encrypt_password_hash, encrypted_content, created_at, updated_at FROM notes WHERE user_id = ? AND deleted_at IS NULL AND is_encrypted = 0 ORDER BY created_at ASC",
-		userID,
+		"SELECT id, user_id, title, content, tags, is_encrypted, encrypt_password_hash, encrypted_content, created_at, updated_at FROM notes WHERE user_id = ? AND deleted_at IS NULL AND is_encrypted = 0"+lockCond+" ORDER BY created_at ASC",
+		args...,
 	)
 	if err != nil {
 		return nil, err

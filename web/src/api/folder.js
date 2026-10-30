@@ -25,3 +25,16 @@ export function moveFolder(id, position) {
 export function deleteFolder(id) {
   return api.delete(`/folders/${id}`)
 }
+
+// v2.3.0 文件夹访问锁
+export function encryptFolder(id, password, confirmPassword) {
+  return api.put(`/folders/${id}/encrypt`, { password, confirm_password: confirmPassword })
+}
+
+export function decryptFolder(id, password) {
+  return api.delete(`/folders/${id}/encrypt`, { data: { password } })
+}
+
+export function unlockFolder(id, password) {
+  return api.post(`/folders/${id}/unlock`, { password })
+}

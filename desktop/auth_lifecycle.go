@@ -352,6 +352,7 @@ func (l *LocalService) RevalidateNow() (map[string]any, error) {
 // 自动走 `ensureAccess` 惰性换票 → 换票成功即自愈，失败走既有退避/停手机制。
 // 真正需要"等重登"的语义由 `sessionRestored=false` 单独表达。
 func (l *LocalService) demoteToRelogin(reason string) {
+	l.clearFolderUnlocks() // v2.3.0：会话失效/切换账户 → 文件夹回到锁定态
 	if workerPtr() != nil {
 		workerPtr().ClearToken() // 清内存票（worker 保留在位，调度门不关）
 	} else {
@@ -369,6 +370,7 @@ func (l *LocalService) demoteToRelogin(reason string) {
 // Logout 用户主动登出：卸工 + 清 refresh 封存件（用户意图=作废本机会话），
 // device_secret/PIN 封套保留（重登沿用设备身份）。
 func (l *LocalService) Logout() error {
+	l.clearFolderUnlocks() // v2.3.0：退出账户即恢复文件夹锁定
 	l.demoteToRelogin("user-logout")
 	if err := localauth.DropRefreshSealed(database.DB); err != nil {
 		log.Printf("[auth] logout drop sealed: %v", err)

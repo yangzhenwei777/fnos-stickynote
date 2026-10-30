@@ -145,6 +145,7 @@ export namespace model {
 	    version: number;
 	    note_count: number;
 	    is_default: boolean;
+	    is_encrypted: boolean;
 	    // Go type: time
 	    created_at: any;
 	
@@ -160,6 +161,7 @@ export namespace model {
 	        this.version = source["version"];
 	        this.note_count = source["note_count"];
 	        this.is_default = source["is_default"];
+	        this.is_encrypted = source["is_encrypted"];
 	        this.created_at = this.convertValues(source["created_at"], null);
 	    }
 	

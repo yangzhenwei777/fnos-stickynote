@@ -2,6 +2,7 @@ import axios from 'axios'
 import { message } from '@/utils/message'
 import { apiBase, withBase } from '@/utils/appBase'
 import { IS_DESKTOP, installLocalTransport, clearDesktopCredentials } from './local/transport'
+import { grantHeader, clearGrants } from '@/utils/folderGrants'
 
 // 双通道认证：
 // - httpOnly cookie 为主通道（浏览器环境，XSS 无法读取）
@@ -78,6 +79,11 @@ api.interceptors.request.use(config => {
   const token = getAccessToken()
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
+  }
+  // v2.3.0：Web 端文件夹解锁令牌（桌面端由 Go 进程内存裁决，此头会被 transport 忽略）
+  const grants = grantHeader()
+  if (grants) {
+    config.headers['X-Folder-Grants'] = grants
   }
   return config
 })
@@ -237,6 +243,7 @@ if (status === 401 && !skipRefresh && !IS_DESKTOP && !err.config.__retried) {
           // 确认后由 Go 侧清封存凭据（幂等），再回登录页
           try { await clearDesktopCredentials() } catch { /* 绑定不可用时仍允许继续 */ }
           clearTokens()
+          clearGrants()
           localStorage.removeItem('user')
           localStorage.removeItem('userId')
           if (window.location.pathname !== withBase('/login')) {
@@ -255,6 +262,7 @@ if (status === 401 && !skipRefresh && !IS_DESKTOP && !err.config.__retried) {
         message.errorOnce(err.response?.data?.error || '登录状态已失效，请重新登录', 2000)
       }
       clearTokens()
+      clearGrants()
       localStorage.removeItem('user')
       localStorage.removeItem('userId')
       if (window.location.pathname !== withBase('/login')) {

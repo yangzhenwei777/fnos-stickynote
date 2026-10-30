@@ -54,6 +54,9 @@ func desktopImportSizeLimit() int64 {
 // 修法：签名加 folderID 并透传；nil 仍表示"我的笔记"，与 CreateNote 语义一致。
 // 旧调用点（测试/无文件夹导入）传 nil 即可，**零破坏**。
 func (l *LocalService) ImportNote(filename string, data []byte, folderID *int64) (*model.Note, error) {
+	if err := l.ensureFolderUnlocked(folderID); err != nil {
+		return nil, err
+	}
 	if len(data) == 0 {
 		return nil, ErrImportEmpty
 	}

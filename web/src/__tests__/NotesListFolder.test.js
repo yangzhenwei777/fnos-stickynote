@@ -30,6 +30,10 @@ const store = {
   customFolders: [],
   listParam: undefined,
   homeTick: 0,
+  unlockedFolderIds: [],
+  notesRefreshTick: 0,
+  lockSignal: null,
+  isFolderLocked: () => false,
   loadFolders: vi.fn().mockResolvedValue([]),
   createNewFolder: vi.fn(),
   selectFolder: vi.fn(),
@@ -37,6 +41,14 @@ const store = {
 }
 vi.mock('@/stores/folder', () => ({
   useFolderStore: () => store
+}))
+
+vi.mock('@/stores/folderSecurity', () => ({
+  useFolderSecurityStore: () => ({
+    openUnlock: vi.fn(),
+    openEncrypt: vi.fn(),
+    openDecrypt: vi.fn()
+  })
 }))
 
 vi.mock('@/utils/message', () => ({

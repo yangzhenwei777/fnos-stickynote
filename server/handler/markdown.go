@@ -87,6 +87,10 @@ func ImportFile(c *gin.Context) {
 			folderID = &n
 		}
 	}
+	if folderID != nil && folderRequiresUnlock(c, *folderID) {
+		respondFolderLocked(c)
+		return
+	}
 
 	// v21.58 P1：导入与创建笔记一致受配额约束（max_notes_per_user，事务内判断）
 	// v21.66 P1-5：n >= 0 与 note.go 对齐，0 = 不限（此前 n > 0 使 0 被误判为默认 1000）

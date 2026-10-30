@@ -17,9 +17,11 @@ import (
 // "任一 base 不符整 op 409 且 A 也不提交"）；成功则整批单一 seq 产一条 FOLDER_ORDER 事件。
 
 type folderRow struct {
-	id      int64
-	syncID  string
-	version int64
+	id          int64
+	syncID      string
+	version     int64
+	isEncrypted bool
+	hash        string
 }
 
 func listUserFolders(tx *sql.Tx, uid int64) ([]folderRow, error) {
@@ -97,8 +99,23 @@ func folderCreate(tx *sql.Tx, uid int64, deviceID string, op PushOp) (string, in
 	if err := tx.QueryRow("SELECT COALESCE(MAX(sort_order),0) FROM note_folders WHERE user_id = ?", uid).Scan(&maxOrder); err != nil {
 		return "INTERNAL", 0, 0, err.Error(), 0
 	}
-	res, err := tx.Exec("INSERT INTO note_folders (user_id, name, sort_order, sync_id, version) VALUES (?, ?, ?, ?, 1)",
-		uid, name, maxOrder+1, p.SyncID)
+	// v2.3.0 锁定字段：缺省 = 未锁定（CREATE 语义）；显式锁定必须携带哈希。
+	enc := false
+	hash := ""
+	if p.IsEncrypted != nil {
+		enc = *p.IsEncrypted
+	}
+	if p.EncryptPasswordHash != nil {
+		hash = *p.EncryptPasswordHash
+	}
+	if enc && hash == "" {
+		return CodeBatchProtocol, 0, 0, "encrypted folder requires password hash", 0
+	}
+	if !enc {
+		hash = ""
+	}
+	res, err := tx.Exec("INSERT INTO note_folders (user_id, name, sort_order, sync_id, version, is_encrypted, encrypt_password_hash) VALUES (?, ?, ?, ?, 1, ?, ?)",
+		uid, name, maxOrder+1, p.SyncID, boolToInt(enc), hash)
 	if err != nil {
 		return "INTERNAL", 0, 0, err.Error(), 0
 	}
@@ -133,8 +150,23 @@ func folderUpdate(tx *sql.Tx, uid int64, deviceID string, op PushOp) (string, in
 	if dup > 0 {
 		return CodeConflict, 0, f.version, "FOLDER_NAME_EXISTS", 0
 	}
-	res, err := tx.Exec("UPDATE note_folders SET name = ?, version = version + 1 WHERE id = ? AND version = ?",
-		name, f.id, *op.BaseVersion)
+	// v2.3.0：锁定字段缺省 = 保留现状（旧客户端 payload 不含该字段，绝不能覆盖为未加密）。
+	newEnc := f.isEncrypted
+	newHash := f.hash
+	if p.IsEncrypted != nil {
+		newEnc = *p.IsEncrypted
+		if !newEnc {
+			newHash = ""
+		}
+	}
+	if p.EncryptPasswordHash != nil {
+		newHash = *p.EncryptPasswordHash
+	}
+	if newEnc && newHash == "" {
+		return CodeBatchProtocol, 0, 0, "encrypted folder requires password hash", 0
+	}
+	res, err := tx.Exec("UPDATE note_folders SET name = ?, is_encrypted = ?, encrypt_password_hash = ?, version = version + 1 WHERE id = ? AND version = ?",
+		name, boolToInt(newEnc), newHash, f.id, *op.BaseVersion)
 	if err != nil {
 		return "INTERNAL", 0, 0, err.Error(), 0
 	}
@@ -264,9 +296,17 @@ func applyFolderOrder(tx *sql.Tx, uid int64, deviceID string, op PushOp) (string
 	return CodeAcked, versions, 0, "", seq
 }
 
+func boolToInt(v bool) int {
+	if v {
+		return 1
+	}
+	return 0
+}
+
 func resolveFolder(tx *sql.Tx, uid int64, syncID string) (folderRow, string, int64) {
 	var f folderRow
-	err := tx.QueryRow("SELECT id, version FROM note_folders WHERE user_id = ? AND sync_id = ?", uid, syncID).Scan(&f.id, &f.version)
+	err := tx.QueryRow("SELECT id, version, is_encrypted, encrypt_password_hash FROM note_folders WHERE user_id = ? AND sync_id = ?", uid, syncID).
+		Scan(&f.id, &f.version, &f.isEncrypted, &f.hash)
 	if errors.Is(err, sql.ErrNoRows) {
 		return f, CodeEntityGone, 0
 	}

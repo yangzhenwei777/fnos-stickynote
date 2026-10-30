@@ -208,7 +208,12 @@ async function handleRestore(note) {
   try {
     const { data } = await restoreNote(note.id)
     // v21.107 P2-9：明示恢复去向（后端返回 folder；原文件夹已删时回「我的笔记」）
-    message.success(data?.folder ? `已恢复到「${data.folder}」` : '已恢复到笔记列表')
+    // v2.3.0：恢复到锁定文件夹时笔记仍隐藏，提示需解锁查看
+    if (data?.folder_locked) {
+      message.success(`已恢复到「${data.folder}」，该文件夹已加密，解锁后查看`)
+    } else {
+      message.success(data?.folder ? `已恢复到「${data.folder}」` : '已恢复到笔记列表')
+    }
     // 分页场景下就地移除会导致本页缺一条，直接重载当前页
     if (notes.value.length === 1 && page.value > 1) page.value -= 1
     await loadTrash()

@@ -25,6 +25,7 @@ import (
 // role 恒为 "user"：桌面壳不提供管理后台面（admin 菜单不出现在桌面构建），
 // 因此不需要也不应把远端角色透出到前端授权判定。
 func (l *LocalService) LocalLogin() map[string]any {
+	l.clearFolderUnlocks() // v2.3.0：新登录会话从锁定态开始
 	username := "local"
 	if p, err := localauth.Load(database.DB); err == nil && p.Username != "" {
 		username = p.Username
@@ -43,12 +44,22 @@ func (l *LocalService) SetupStatus() map[string]any { return map[string]any{"nee
 
 // ListTags 与 GET /notes/tags 同源（adapter 包 {tags}）。
 func (l *LocalService) ListTags() ([]string, error) {
-	return dbReadGuard(func() ([]string, error) { return model.GetAllTags(l.userID) })
+	return dbReadGuard(func() ([]string, error) { return model.GetAllTags(l.userID, l.folderGrantSet()) })
 }
 
 // GetPublicConfig 与 GET /public-config 同源（model.GetPublicConfigs 键集一致）。
 func (l *LocalService) GetPublicConfig() (map[string]string, error) {
-	return dbReadGuard(func() (map[string]string, error) { return model.GetPublicConfigs() })
+	return dbReadGuard(func() (map[string]string, error) {
+		cfg, err := model.GetPublicConfigs()
+		if err != nil {
+			return nil, err
+		}
+		// 与 handler/config.go 同形：键未落库时补默认 0（永久保留），前端无需再猜
+		if _, ok := cfg["trash_retention_days"]; !ok {
+			cfg["trash_retention_days"] = "0"
+		}
+		return cfg, nil
+	})
 }
 
 // GetQuota 复刻 handler.GetQuota 的键与默认（notes_limit/storage_limit_mb 0=不限如实返回）。
@@ -94,7 +105,7 @@ func atoiAllow0(s string) (int, bool) {
 
 func (l *LocalService) ListTrash(page, pageSize int) (*model.NoteListResponse, error) {
 	return dbReadGuard(func() (*model.NoteListResponse, error) {
-		return model.ListTrashedNotes(l.userID, page, pageSize)
+		return model.ListTrashedNotes(l.userID, page, pageSize, l.folderGrantSet())
 	})
 }
 
@@ -117,7 +128,9 @@ func (l *LocalService) RestoreNote(id int64) (map[string]any, error) {
 	if name, ferr := model.GetNoteFolderName(id); ferr == nil && name != "" {
 		folder = name
 	}
-	return map[string]any{"message": "已恢复", "folder": folder}, nil
+	// v2.3.0：与 handler/note_trash.go 同形——恢复到锁定文件夹时提示需解锁查看（A-15 契约）
+	locked, _ := model.FolderLockedForNote(id, l.userID, l.folderGrantSet())
+	return map[string]any{"message": "已恢复", "folder": folder, "folder_locked": locked}, nil
 }
 
 func (l *LocalService) PermanentDeleteNote(id int64) (map[string]any, error) {
@@ -186,5 +199,8 @@ func (l *LocalService) BatchDelete(ids []int64) map[string]any {
 }
 
 func (l *LocalService) CopyNote(id int64, folderID *int64) (*model.Note, error) {
+	if err := l.ensureFolderUnlocked(folderID); err != nil {
+		return nil, err
+	}
 	return model.CopyNoteToFolder(id, l.userID, folderID, 100000)
 }

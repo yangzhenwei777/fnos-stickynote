@@ -1,4 +1,5 @@
 <template>
+  <FolderPasswordDialog />
   <router-view />
 </template>
 
@@ -15,6 +16,8 @@
 import { onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useConfigStore } from '@/stores/config'
+import { useFolderStore } from '@/stores/folder'
+import FolderPasswordDialog from '@/components/FolderPasswordDialog.vue'
 import { IS_DESKTOP } from '@/api/local/transport'
 import { fetchRuntimeStatus } from '@/api/local/desktopApi'
 // ⭐ v21.220：桌面状态仓库在**应用入口**启动（不是组件里）。
@@ -23,9 +26,14 @@ import { fetchRuntimeStatus } from '@/api/local/desktopApi'
 import { startDesktopStatus } from '@/api/local/desktopStatus'
 
 const config = useConfigStore()
+const folderStore = useFolderStore()
 
 onMounted(() => {
   config.fetchPublicConfig()
+  // v2.3.0：桌面端解锁态以 Go 进程内存为准，启动时回填前端展示态。
+  if (IS_DESKTOP) {
+    folderStore.restoreUnlocks()
+  }
   // v21.196 O3：钉版 WebView2 若已降级到系统内核，界面可能空白/崩溃（Evergreen 153 已实证）。
   // 降级不再是静默——这里给一条不自动消失的告警，用户可据此决定是否重装。
   if (IS_DESKTOP) {

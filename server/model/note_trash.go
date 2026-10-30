@@ -8,7 +8,9 @@ import (
 	"stickynote/logger"
 )
 
-func ListTrashedNotes(userID int64, page, pageSize int) (*NoteListResponse, error) {
+func ListTrashedNotes(userID int64, page, pageSize int, granted ...map[int64]struct{}) (*NoteListResponse, error) {
+	grant := firstGranted(granted)
+	lockCond, lockArgs := FolderLockCondition("", userID, grant)
 	// v21.66 P2：page 上限
 	const maxPage = 100000
 	if page < 1 {
@@ -23,15 +25,15 @@ func ListTrashedNotes(userID int64, page, pageSize int) (*NoteListResponse, erro
 
 	var total int
 	if err := database.DB.QueryRow(
-		"SELECT COUNT(*) FROM notes WHERE user_id = ? AND deleted_at IS NOT NULL",
-		userID,
+		"SELECT COUNT(*) FROM notes WHERE user_id = ? AND deleted_at IS NOT NULL"+lockCond,
+		append([]interface{}{userID}, lockArgs...)...,
 	).Scan(&total); err != nil {
 		return nil, err
 	}
 
 	rows, err := database.DB.Query(
-		"SELECT id, user_id, title, content, tags, is_encrypted, encrypt_password_hash, encrypted_content, created_at, updated_at, deleted_at FROM notes WHERE user_id = ? AND deleted_at IS NOT NULL ORDER BY deleted_at DESC LIMIT ? OFFSET ?",
-		userID, pageSize, offset,
+		"SELECT id, user_id, title, content, tags, is_encrypted, encrypt_password_hash, encrypted_content, created_at, updated_at, deleted_at FROM notes WHERE user_id = ? AND deleted_at IS NOT NULL"+lockCond+" ORDER BY deleted_at DESC LIMIT ? OFFSET ?",
+		append(append([]interface{}{userID}, lockArgs...), pageSize, offset)...,
 	)
 	if err != nil {
 		return nil, err

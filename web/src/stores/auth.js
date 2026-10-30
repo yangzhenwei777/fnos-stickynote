@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import api, { setTokens, updateAccessToken, getRefreshToken, clearTokens } from '../api/request'
 import { IS_DESKTOP } from '../api/local/transport'
 import { readJSON, writeJSON } from '../utils/storage'
+import { clearGrants } from '../utils/folderGrants'
 
 // 双通道认证（见 api/request.js）：cookie 为主、Authorization 头兜底。
 // localStorage 中的 user / userId 为非敏感展示数据；token 存储遵循"记住我"语义。
@@ -41,6 +42,7 @@ export const useAuthStore = defineStore('auth', () => {
   function clearAuth() {
     user.value = null
     clearTokens()
+    clearGrants() // v2.3.0：退出账户即恢复文件夹锁定
     localStorage.removeItem('user')
     localStorage.removeItem('userId')
   }

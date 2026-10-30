@@ -52,7 +52,8 @@ var seedDDL = []string{
 	`CREATE TABLE IF NOT EXISTS note_folders (
 		id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL,
 		name TEXT NOT NULL, sort_order INTEGER DEFAULT 0,
-		created_at DATETIME DEFAULT CURRENT_TIMESTAMP, sync_id TEXT, version INTEGER DEFAULT 0)`,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP, sync_id TEXT, version INTEGER DEFAULT 0,
+		is_encrypted INTEGER DEFAULT 0, encrypt_password_hash TEXT DEFAULT '')`,
 	`CREATE TABLE IF NOT EXISTS notes (
 		id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL,
 		title TEXT DEFAULT 'Untitled', content TEXT DEFAULT '', content_text TEXT DEFAULT '',

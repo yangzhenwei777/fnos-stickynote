@@ -13,12 +13,14 @@ def check(name, cond, detail=""):
     (passed if cond else failed).append(name)
     print(f"  {'PASS' if cond else 'FAIL'}  {name}" + (f"  | {detail}" if detail else ""))
 
-def req(method, path, body=None, cookies=None, raw=False):
+def req(method, path, body=None, cookies=None, raw=False, headers=None):
     conn = http.client.HTTPConnection(BASE, timeout=10)
-    headers = {"Content-Type": "application/json"}
+    h = {"Content-Type": "application/json"}
+    if headers:
+        h.update(headers)
     if cookies:
-        headers["Cookie"] = "; ".join(f"{k}={v}" for k, v in cookies.items())
-    conn.request(method, path, json.dumps(body) if body is not None else None, headers)
+        h["Cookie"] = "; ".join(f"{k}={v}" for k, v in cookies.items())
+    conn.request(method, path, json.dumps(body) if body is not None else None, h)
     resp = conn.getresponse()
     data = resp.read()
     setcookies = {}
@@ -1444,6 +1446,88 @@ def main():
         s, j, _, _ = req("GET", "/api/system/uploads-hash", cookies=sc19x)
         check("24.10 管理端回填进度端点 200", s == 200 and isinstance((j or {}).get("pending"), int) and (j or {}).get("pending") >= 0, f"status={s} {j}")
         req("DELETE", f"/api/folders/{mv_fid}", cookies=sc19x)
+
+        print("== 24b. v2.3.0 文件夹访问锁（隐藏 / 解锁令牌 / 导出 / 删除守卫 / 登出失效）==")
+        # --- 24b.1 建夹 + 夹内笔记 ---
+        s, j, _, _ = req("POST", "/api/folders", {"name": "加密夹"}, cookies=sc19x)
+        lock_fid = (j or {}).get("id")
+        check("24b.1 创建加密文件夹", s == 201 and lock_fid, f"status={s} {j}")
+        s, j, _, _ = req("POST", "/api/notes", {"title": "锁内普通笔记", "content": "<p>LOCKED_MARKER</p>", "tags": "locktag", "folder_id": lock_fid}, cookies=sc19x)
+        lock_nid = (j or {}).get("id")
+        check("24b.2 夹内笔记创建", s == 201 and lock_nid, f"status={s} {j}")
+
+        # --- 24b.3 加密（双密码）---
+        s, j, _, _ = req("PUT", f"/api/folders/{lock_fid}/encrypt", {"password": "abc123", "confirm_password": "abc123"}, cookies=sc19x)
+        check("24b.3 加密文件夹 → 200 且 version=2", s == 200 and (j or {}).get("is_encrypted") is True and (j or {}).get("version") == 2, f"status={s} {j}")
+
+        # --- 24b.4 文件夹列表：加密标记 + 计数归零 ---
+        s, j, _, _ = req("GET", "/api/folders", cookies=sc19x)
+        lf = next((f for f in (j or {}).get("folders", []) if f.get("id") == lock_fid), {})
+        check("24b.4 列表返回 is_encrypted=true 且 note_count=0", lf.get("is_encrypted") is True and lf.get("note_count") == 0, str(lf))
+
+        # --- 24b.5 全部笔记 / 搜索 / 标签 / 单篇 ---
+        s, j, _, _ = req("GET", "/api/notes?page_size=100", cookies=sc19x)
+        ids = [n.get("id") for n in (j or {}).get("notes", [])]
+        check("24b.5 全部笔记列表隐藏锁定夹笔记", lock_nid not in ids, f"ids={ids}")
+        s, j, _, _ = req("GET", "/api/notes?q=LOCKED_MARKER", cookies=sc19x)
+        check("24b.6 搜索不命中锁定夹笔记", s == 200 and (j or {}).get("total") == 0, f"status={s} {j}")
+        s, j, _, _ = req("GET", "/api/notes/tags", cookies=sc19x)
+        check("24b.7 标签聚合不泄漏锁定夹标签", "locktag" not in (j or {}).get("tags", []), str(j))
+        s, j, _, _ = req("GET", f"/api/notes/{lock_nid}", cookies=sc19x)
+        check("24b.8 单篇详情 → 423 FOLDER_LOCKED", s == 423 and (j or {}).get("code") == "FOLDER_LOCKED", f"status={s} {j}")
+
+        # --- 24b.9 导出全部（未解锁不含）---
+        s, j, _, data = req("GET", "/api/export/notes", cookies=sc19x)
+        names = zipfile.ZipFile(io.BytesIO(data)).namelist() if s == 200 else []
+        check("24b.9 导出全部未解锁不包含锁定夹笔记", s == 200 and not any("锁内普通笔记" in n for n in names), f"status={s} names={names[:5]}")
+
+        # --- 24b.10 移入锁定夹 / 删除锁定夹 → 423 ---
+        s, j, _, _ = req("POST", "/api/notes", {"title": "待移动笔记", "content": "<p>mv</p>", "tags": ""}, cookies=sc19x)
+        tmp_nid = (j or {}).get("id")
+        s, j, _, _ = req("PUT", f"/api/notes/{tmp_nid}/folder", {"folder_id": lock_fid}, cookies=sc19x)
+        check("24b.10 未解锁移入锁定夹 → 423", s == 423 and (j or {}).get("code") == "FOLDER_LOCKED", f"status={s} {j}")
+        s, j, _, _ = req("DELETE", f"/api/folders/{lock_fid}", cookies=sc19x)
+        check("24b.11 未解锁删除锁定夹 → 423", s == 423 and (j or {}).get("code") == "FOLDER_LOCKED", f"status={s} {j}")
+
+        # --- 24b.12 错误密码 → 403；正确解锁 → 令牌 ---
+        s, j, _, _ = req("POST", f"/api/folders/{lock_fid}/unlock", {"password": "bad"}, cookies=sc19x)
+        check("24b.12 错误密码解锁 → 403", s == 403, f"status={s} {j}")
+        s, j, _, _ = req("POST", f"/api/folders/{lock_fid}/unlock", {"password": "abc123"}, cookies=sc19x)
+        lock_tok = (j or {}).get("unlock_token")
+        check("24b.13 正确密码解锁 → 返回令牌", s == 200 and bool(lock_tok), f"status={s} {j}")
+        lock_hdr = {"X-Folder-Grants": lock_tok}
+
+        # --- 24b.14 带令牌：列表/导出恢复 ---
+        s, j, _, _ = req("GET", "/api/notes?page_size=100", cookies=sc19x, headers=lock_hdr)
+        ids = [n.get("id") for n in (j or {}).get("notes", [])]
+        check("24b.14 带令牌列表可见锁定夹笔记", lock_nid in ids, f"ids={ids}")
+        s, j, _, data = req("GET", "/api/export/notes", cookies=sc19x, headers=lock_hdr)
+        names = zipfile.ZipFile(io.BytesIO(data)).namelist() if s == 200 else []
+        check("24b.15 带令牌导出包含锁定夹笔记", s == 200 and any("锁内普通笔记" in n for n in names), f"status={s} names={names[:5]}")
+        s, j, _, _ = req("DELETE", f"/api/folders/{lock_fid}", cookies=sc19x, headers=lock_hdr)
+        check("24b.16 已解锁但非空删除仍 409", s == 409 and (j or {}).get("code") == "FOLDER_NOT_EMPTY", f"status={s} {j}")
+
+        # --- 24b.17 登出（token_version++）→ 旧令牌失效 ---
+        req("POST", "/api/auth/logout", cookies=sc19x)
+        s, j, sc, _ = req("POST", "/api/auth/login", {"username": "smoketest", "password": "Passw0rd!2026"})
+        check("24b.17 重新登录成功", s == 200 and sc, f"status={s} {j}")
+        sc19x = sc
+        s, j, _, _ = req("GET", "/api/notes?page_size=100", cookies=sc19x, headers=lock_hdr)
+        ids = [n.get("id") for n in (j or {}).get("notes", [])]
+        check("24b.18 登出后旧解锁令牌失效（笔记重新隐藏）", lock_nid not in ids, f"ids={ids}")
+
+        # --- 24b.19 解密恢复可见 ---
+        s, j, _, _ = req("DELETE", f"/api/folders/{lock_fid}/encrypt", {"password": "abc123"}, cookies=sc19x)
+        check("24b.19 解密文件夹 → 200", s == 200 and (j or {}).get("is_encrypted") is False, f"status={s} {j}")
+        s, j, _, _ = req("GET", "/api/notes?page_size=100", cookies=sc19x)
+        ids = [n.get("id") for n in (j or {}).get("notes", [])]
+        check("24b.20 解密后笔记恢复可见", lock_nid in ids, f"ids={ids}")
+
+        # --- 24b.21 清场 ---
+        req("DELETE", f"/api/notes/{lock_nid}", cookies=sc19x)
+        req("DELETE", f"/api/notes/{tmp_nid}", cookies=sc19x)
+        s, j, _, _ = req("DELETE", f"/api/folders/{lock_fid}", cookies=sc19x)
+        check("24b.21 清场删除文件夹", s == 200, f"status={s} {j}")
 
         print("== 25. v21.91 管理后台闭环（审计日志 /api/logs + 用户管理 + 权限边界）==")
         # 背景：覆盖率矩阵扫描发现 GET /api/logs 是唯一无任何测试命中的端点，

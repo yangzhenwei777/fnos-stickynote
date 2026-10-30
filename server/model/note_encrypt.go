@@ -82,10 +82,13 @@ func GetEncryptedContent(noteID, userID int64) (passwordHash, ciphertext string,
 }
 
 // CountEncryptedNotes 统计用户的加密笔记数（v20.0，导出全部时跳过计数用）。
-func CountEncryptedNotes(userID int64, out *int) {
+func CountEncryptedNotes(userID int64, out *int, granted ...map[int64]struct{}) {
+	grant := firstGranted(granted)
+	lockCond, lockArgs := FolderLockCondition("", userID, grant)
+	args := append([]interface{}{userID}, lockArgs...)
 	database.DB.QueryRow(
-		"SELECT COUNT(*) FROM notes WHERE user_id=? AND deleted_at IS NULL AND is_encrypted=1",
-		userID,
+		"SELECT COUNT(*) FROM notes WHERE user_id=? AND deleted_at IS NULL AND is_encrypted=1"+lockCond,
+		args...,
 	).Scan(out)
 }
 

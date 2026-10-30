@@ -437,6 +437,7 @@ import { useNoteEncrypt } from '@/composables/useNoteEncrypt'
 import { useAutoSave } from '@/composables/useAutoSave'
 import { useNoteImport } from '@/composables/useNoteImport'
 import { useFolderStore } from '@/stores/folder'
+import { useFolderSecurityStore } from '@/stores/folderSecurity'
 import { stripHtml, formatDate, toggleTaskItemInHtml } from '@/utils/note'
 import { message } from '@/utils/message'
 import TiptapEditor from '@/components/TiptapEditor.vue'
@@ -457,6 +458,7 @@ const route = useRoute()
 // v21.86 文件夹状态（左侧菜单栏 AppSidebar 共享；v21.89 起移动端入口已迁 /notes-list，
 // 主页不再需要 mobileFolderLabel/handleMobileFolder）
 const folderStore = useFolderStore()
+const folderSecurity = useFolderSecurityStore()
 const customFolders = computed(() => folderStore.customFolders)
 
 // ---- UI 状态 ----
@@ -791,6 +793,17 @@ function openFolderPicker(mode) {
 
 async function handleFolderPick(folderId) {
   if (!currentNote.value) return
+  // v2.3.0：目标是锁定文件夹时先解锁，取消则不移动/复制
+  if (folderId !== null && folderId !== undefined) {
+    const target = folderStore.folders.find(x => x.id === folderId)
+    if (target && folderStore.isFolderLocked(target)) {
+      folderSecurity.openUnlock(target, () => {
+        folderPickerVisible.value = false
+        handleFolderPick(folderId)
+      })
+      return
+    }
+  }
   const id = currentNote.value.id
   folderPickerLoading.value = true
   try {
@@ -985,6 +998,23 @@ watch(saveConflict, (v) => {
 // v21.86：切换文件夹 → 按当前文件夹重新拉取笔记列表（搜索词与标签条件保留）
 watch(() => folderStore.activeFolderId, async () => {
   await loadNotes(searchQuery.value, activeTag.value, folderStore.listParam)
+})
+
+// v2.3.0：文件夹加密/解密/解锁后刷新列表与标签（锁定笔记立即从「全部笔记」消失）
+watch(() => folderStore.notesRefreshTick, async () => {
+  await loadNotes(searchQuery.value, activeTag.value, folderStore.listParam)
+  loadTags()
+})
+
+// v2.3.0：正在查看的笔记所属文件夹被锁定 → 立即关闭，避免继续展示已隐藏内容
+watch(() => folderStore.lockSignal, (sig) => {
+  if (!sig || !currentNote.value) return
+  if (String(currentNote.value.folder_id ?? '') !== String(sig.folderId)) return
+  isDirty.value = false
+  editMode.value = false
+  currentNote.value = null
+  clearSaveState()
+  message.warning('该文件夹已加密，当前笔记已关闭')
 })
 
 // v21.88：移动端 LOGO/便签点击（homeTick 自增）→ 关闭当前打开的笔记回到列表态。

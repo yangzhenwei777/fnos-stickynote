@@ -91,9 +91,9 @@ func (l *LocalService) ExportNotesZip(ids []int64, all bool) (map[string]any, er
 	}
 	notes, err := dbReadGuard(func() ([]model.Note, error) {
 		if all {
-			return model.ListAllNotesForExport(l.userID)
+			return model.ListAllNotesForExport(l.userID, l.folderGrantSet())
 		}
-		return model.ListNotesByIDs(ids, l.userID)
+		return model.ListNotesByIDs(ids, l.userID, l.folderGrantSet())
 	})
 	if err != nil {
 		return nil, err
@@ -106,7 +106,7 @@ func (l *LocalService) ExportNotesZip(ids []int64, all bool) (map[string]any, er
 	skipped, _ := dbReadGuard(func() (int, error) {
 		var n int
 		if all {
-			model.CountEncryptedNotes(l.userID, &n)
+			model.CountEncryptedNotes(l.userID, &n, l.folderGrantSet())
 			return n, nil
 		}
 		for i := range notes {
@@ -116,6 +116,12 @@ func (l *LocalService) ExportNotesZip(ids []int64, all bool) (map[string]any, er
 		}
 		return n, nil
 	})
+	folderSkipped := 0
+	if all {
+		folderSkipped, _ = dbReadGuard(func() (int, error) {
+			return model.LockedNoteCount(l.userID, l.folderGrantSet())
+		})
+	}
 
 	prefix := "便签导出-"
 	if !all {
@@ -161,6 +167,7 @@ func (l *LocalService) ExportNotesZip(ids []int64, all bool) (map[string]any, er
 		size = fi.Size()
 	}
 	return map[string]any{
-		"path": savePath, "exported": written, "skipped": skipped, "bytes": size,
+		"path": savePath, "exported": written, "skipped": skipped,
+		"folders_skipped": folderSkipped, "bytes": size,
 	}, nil
 }

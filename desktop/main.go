@@ -138,6 +138,12 @@ func NewLocalService(profileDir string) *LocalService {
 		userID:    1,
 	}
 	lsInstance = ls // 刀 3：mountWorker 等包级路径回写会话态用
+	// v2.3.0：远端把文件夹锁定后，本进程的解锁授权立即作废（fail-closed）。
+	synclocal.FolderLockChangedHook = func(folderID int64, encrypted bool) {
+		if encrypted {
+			ls.forgetFolderUnlock(folderID)
+		}
+	}
 	return ls
 }
 
@@ -154,6 +160,9 @@ func (l *LocalService) Startup(ctx context.Context) {
 // ---- 笔记 ----
 
 func (l *LocalService) CreateNote(title, content, tags string, folderID *int64) (*model.Note, error) {
+	if err := l.ensureFolderUnlocked(folderID); err != nil {
+		return nil, err
+	}
 	n, err := l.notes.CreateNote(l.userID, title, content, tags, folderID)
 	if err == nil {
 		l.enqueueNote(n.ID, "CREATE")
@@ -173,12 +182,21 @@ func (l *LocalService) UpdateNote(id int64, title, content, tags string, baseVer
 
 func (l *LocalService) GetNote(id int64) (*model.Note, error) {
 	// P1-1：只读绑定统一超时护栏（详见 db_guard.go 顶部取舍说明）
-	return dbReadGuard(func() (*model.Note, error) { return l.notes.GetNote(id, l.userID) })
+	return dbReadGuard(func() (*model.Note, error) {
+		locked, err := model.FolderLockedForNote(id, l.userID, l.folderGrantSet())
+		if err != nil {
+			return nil, err
+		}
+		if locked {
+			return nil, model.ErrFolderLocked
+		}
+		return l.notes.GetNote(id, l.userID)
+	})
 }
 
 func (l *LocalService) ListNotes(page, pageSize int, q, tag, sortBy string, folderID *int64) (*model.NoteListResponse, error) {
 	return dbReadGuard(func() (*model.NoteListResponse, error) {
-		return l.notes.ListNotes(l.userID, page, pageSize, q, tag, sortBy, folderID)
+		return l.notes.ListNotes(l.userID, page, pageSize, q, tag, sortBy, folderID, l.folderGrantSet())
 	})
 }
 
@@ -191,14 +209,19 @@ func (l *LocalService) DeleteNote(id int64) error {
 	return nil
 }
 
-func (l *LocalService) MoveNote(id int64, folderID *int64) error {
+func (l *LocalService) MoveNote(id int64, folderID *int64) (int64, error) {
+	if err := l.ensureFolderUnlocked(folderID); err != nil {
+		return 0, err
+	}
 	// 桌面本地路径：返回版本即当前本地版本（本地移动不动 version，v21.87 语义保持）
-	if _, err := l.notes.MoveNoteToFolder(id, l.userID, folderID); err != nil {
-		return err
+	// 返回值供 LocalTransport 复刻 handler 的 {message, version} 响应（开发纪律 A-15）。
+	version, err := l.notes.MoveNoteToFolder(id, l.userID, folderID)
+	if err != nil {
+		return 0, err
 	}
 	l.enqueueNote(id, "UPDATE")
 	wakeScheduler() // v21.147 实时同步：变更入队后立刻触发同步
-	return nil
+	return version, nil
 }
 
 // ---- 加密（与 handler/note_encrypt.go 同语义，SOURCE-FACT §3 纪律逐条内嵌） ----
@@ -238,7 +261,9 @@ func (l *LocalService) UpdateEncrypted(id int64, title, tags, plaintext, passwor
 // ---- 文件夹 ----
 
 func (l *LocalService) ListFolders() ([]model.Folder, error) {
-	return dbReadGuard(func() ([]model.Folder, error) { return l.folders.List(l.userID) })
+	return dbReadGuard(func() ([]model.Folder, error) {
+		return l.folders.List(l.userID, l.folderGrantSet())
+	})
 }
 
 // 文件夹 binding 的 Outbox 入队（P1 批次2，§25 Dirty 规则；未登录零副作用同 enqueueNote）。
@@ -281,11 +306,15 @@ func (l *LocalService) MoveFolder(id int64, position string) error {
 }
 
 func (l *LocalService) DeleteFolder(id int64) error {
+	if err := l.ensureFolderUnlocked(&id); err != nil {
+		return err
+	}
 	// 删除后行不存在——入队所需引用必须在物理删前捕获（含 base_version）。
 	ref, ok := synclocal.GetFolderRef(database.DB, id)
 	if err := l.folders.Delete(id, l.userID); err != nil {
 		return err
 	}
+	l.forgetFolderUnlock(id)
 	if ok && workerPtr() != nil {
 		if err := synclocal.EnqueueFolderDeleteOp(database.DB, ref); err != nil {
 			log.Printf("[sync] enqueue folder DELETE %s failed: %v", ref.SyncID, err)

@@ -28,7 +28,7 @@ type updateFolderRequest struct {
 // ListFolders GET /api/folders — 默认项在前 + 自定义项按 sort_order
 func ListFolders(c *gin.Context) {
 	userID, _ := c.Get("userID")
-	folders, err := model.ListFolders(userID.(int64))
+	folders, err := model.ListFolders(userID.(int64), folderGrants(c))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取文件夹失败"})
 		return
@@ -116,6 +116,10 @@ func DeleteFolder(c *gin.Context) {
 		return
 	}
 	userID, _ := c.Get("userID")
+	if folderRequiresUnlock(c, id) {
+		respondFolderLocked(c)
+		return
+	}
 	// P1 批次2：委托 Facade——FOLDER DELETE 墓碑 + 回收站受影响笔记逐行 UPDATE 事件（§56/§143）。
 	if err := app.NewServerFolderService().Delete(id, userID.(int64)); err != nil {
 		switch {

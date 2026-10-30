@@ -272,20 +272,25 @@ func IsDirty(db *sql.DB, entitySyncID string) (bool, error) {
 
 // FolderRef 删除前捕获的行引用（DELETE 入队时行已不存在）。
 type FolderRef struct {
-	SyncID  string
-	Name    string
-	Version int64
+	SyncID      string
+	Name        string
+	Version     int64
+	IsEncrypted bool
+	Hash        string
 }
 
 // GetFolderRef 读本地文件夹引用（无 sync_id 视为未初始化，ok=false）。
 func GetFolderRef(db *sql.DB, folderID int64) (FolderRef, bool) {
 	var r FolderRef
 	var syncID sql.NullString
-	err := db.QueryRow(`SELECT sync_id, name, version FROM note_folders WHERE id = ?`, folderID).Scan(&syncID, &r.Name, &r.Version)
+	var encrypted int
+	err := db.QueryRow(`SELECT sync_id, name, version, is_encrypted, encrypt_password_hash FROM note_folders WHERE id = ?`, folderID).
+		Scan(&syncID, &r.Name, &r.Version, &encrypted, &r.Hash)
 	if err != nil || !syncID.Valid || syncID.String == "" {
 		return r, false
 	}
 	r.SyncID = syncID.String
+	r.IsEncrypted = encrypted != 0
 	return r, true
 }
 
@@ -295,7 +300,12 @@ func EnqueueFolderOp(db *sql.DB, folderID int64, operation string) error {
 	if !ok {
 		return fmt.Errorf("folder %d missing sync_id (client schema not migrated?)", folderID)
 	}
-	payload, _ := json.Marshal(syncspec.FolderPayload{SyncID: r.SyncID, Name: r.Name, Version: r.Version})
+	enc := r.IsEncrypted
+	hash := r.Hash
+	payload, _ := json.Marshal(syncspec.FolderPayload{
+		SyncID: r.SyncID, Name: r.Name, Version: r.Version,
+		IsEncrypted: &enc, EncryptPasswordHash: &hash,
+	})
 	_, err := db.Exec(`INSERT INTO sync_outbox (op_id, entity_type, entity_sync_id, operation, base_version, payload)
 		VALUES (?, 'FOLDER', ?, ?, ?, ?)`, randID(), r.SyncID, operation, r.Version, string(payload))
 	return err

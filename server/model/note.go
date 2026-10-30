@@ -96,7 +96,8 @@ func GetNote(id, userID int64) (*Note, error) {
 
 // ListNotes 笔记列表。v21.86 新增 folderID 过滤：
 // nil = 全部笔记；指向 0 = 默认"我的笔记"（folder_id IS NULL）；>0 = 指定自定义文件夹。
-func ListNotes(userID int64, page, pageSize int, search, tag, sortBy string, folderID *int64) (*NoteListResponse, error) {
+func ListNotes(userID int64, page, pageSize int, search, tag, sortBy string, folderID *int64, granted ...map[int64]struct{}) (*NoteListResponse, error) {
+	grant := firstGranted(granted)
 	// v21.66 P2：page 上限（防极端 offset 整数溢出/大 offset 扫描）
 	const maxPage = 100000
 	if page < 1 {
@@ -154,6 +155,11 @@ func ListNotes(userID int64, page, pageSize int, search, tag, sortBy string, fol
 			args = append(args, *folderID)
 		}
 	}
+
+	// v2.3.0 文件夹访问锁：未授权时排除锁定文件夹（含搜索/标签路径）。
+	lockCond, lockArgs := FolderLockCondition("notes.", userID, grant)
+	conditions += lockCond
+	args = append(args, lockArgs...)
 
 	// COUNT 查询：FTS 分支用 JOIN，非 FTS 用普通条件
 	countSQL := "SELECT COUNT(*) FROM notes " + conditions
@@ -250,15 +256,19 @@ var ErrVersionConflict = errors.New("version conflict")
 
 // ListTrashedNotes 回收站列表：按删除时间倒序，分页返回（v18.7）。
 // 回收站永久保留、只增不减，全量返回迟早撑不住——分页参数与 ListNotes 对齐。
-func GetAllTags(userID int64) ([]string, error) {
+func GetAllTags(userID int64, granted ...map[int64]struct{}) ([]string, error) {
+	grant := firstGranted(granted)
+	lockCond, lockArgs := FolderLockCondition("n.", userID, grant)
 	// P3-11: 优先 note_tags 关联表，不存在则回退旧逗号串逻辑。
 	rows, err := database.DB.Query(
-		"SELECT DISTINCT nt.tag FROM note_tags nt JOIN notes n ON n.id = nt.note_id WHERE n.user_id = ? AND n.deleted_at IS NULL ORDER BY nt.tag",
-		userID,
+		"SELECT DISTINCT nt.tag FROM note_tags nt JOIN notes n ON n.id = nt.note_id WHERE n.user_id = ? AND n.deleted_at IS NULL"+lockCond+" ORDER BY nt.tag",
+		append([]interface{}{userID}, lockArgs...)...,
 	)
 	singleTagMode := err == nil
 	if err != nil {
-		rows, err = database.DB.Query("SELECT DISTINCT tags FROM notes WHERE user_id = ? AND tags != '' AND deleted_at IS NULL", userID)
+		lockCond, lockArgs = FolderLockCondition("", userID, grant)
+		rows, err = database.DB.Query("SELECT DISTINCT tags FROM notes WHERE user_id = ? AND tags != '' AND deleted_at IS NULL"+lockCond,
+			append([]interface{}{userID}, lockArgs...)...)
 	}
 	if err != nil {
 		return nil, err
@@ -308,10 +318,11 @@ func splitTags(s string) []string {
 
 // ListAllNotesForExport 导出用：取用户全部正常笔记（不分页，按创建时间升序）。
 // 回收站中的笔记不导出。
-func ListNotesByIDs(ids []int64, userID int64) ([]Note, error) {
+func ListNotesByIDs(ids []int64, userID int64, granted ...map[int64]struct{}) ([]Note, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
+	grant := firstGranted(granted)
 	placeholders := make([]string, len(ids))
 	args := make([]interface{}, 0, len(ids)+1)
 	args = append(args, userID)
@@ -319,7 +330,9 @@ func ListNotesByIDs(ids []int64, userID int64) ([]Note, error) {
 		placeholders[i] = "?"
 		args = append(args, id)
 	}
-	query := "SELECT id, user_id, title, content, tags, is_encrypted, encrypt_password_hash, encrypted_content, created_at, updated_at FROM notes WHERE user_id=? AND deleted_at IS NULL AND id IN (" + strings.Join(placeholders, ",") + ") ORDER BY created_at ASC"
+	lockCond, lockArgs := FolderLockCondition("", userID, grant)
+	args = append(args, lockArgs...)
+	query := "SELECT id, user_id, title, content, tags, is_encrypted, encrypt_password_hash, encrypted_content, created_at, updated_at FROM notes WHERE user_id=? AND deleted_at IS NULL AND id IN (" + strings.Join(placeholders, ",") + ")" + lockCond + " ORDER BY created_at ASC"
 	rows, err := database.DB.Query(query, args...)
 	if err != nil {
 		return nil, err

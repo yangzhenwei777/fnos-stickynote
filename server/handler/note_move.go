@@ -68,6 +68,10 @@ func MoveNoteToFolder(c *gin.Context) {
 		return
 	}
 	folderID := normalizeNoteFolderID(req.FolderID)
+	if folderID != nil && folderRequiresUnlock(c, *folderID) {
+		respondFolderLocked(c)
+		return
+	}
 
 	// P2 批次1（§129 门禁）：委托 app Facade——事务内 version++（§57）+ UPDATE 事件同提交。
 	// 响应携带新 version：移动会推进服务端版本，持有该笔记编辑态的客户端须同步乐观锁基点。
@@ -94,6 +98,10 @@ func CopyNoteToFolder(c *gin.Context) {
 		return
 	}
 	folderID := normalizeNoteFolderID(req.FolderID)
+	if folderID != nil && folderRequiresUnlock(c, *folderID) {
+		respondFolderLocked(c)
+		return
+	}
 
 	// 配额（与 CreateNote 同口径：配置缺失/非法回退 1000，0=不限）
 	limit := 1000

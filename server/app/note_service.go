@@ -166,8 +166,8 @@ func (s *NoteService) GetNote(id, userID int64) (*model.Note, error) {
 	return model.GetNote(id, userID)
 }
 
-func (s *NoteService) ListNotes(userID int64, page, pageSize int, search, tag, sortBy string, folderID *int64) (*model.NoteListResponse, error) {
-	return model.ListNotes(userID, page, pageSize, search, tag, sortBy, folderID)
+func (s *NoteService) ListNotes(userID int64, page, pageSize int, search, tag, sortBy string, folderID *int64, granted ...map[int64]struct{}) (*model.NoteListResponse, error) {
+	return model.ListNotes(userID, page, pageSize, search, tag, sortBy, folderID, granted...)
 }
 
 // DeleteNote 软删入回收站。server 模式：version++ + DELETE 墓碑事件（v20 §58 / SOURCE-FACT #3）

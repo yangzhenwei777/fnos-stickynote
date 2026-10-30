@@ -50,6 +50,10 @@ export function CreateNote(arg1, arg2, arg3, arg4) {
   return window['go']['main']['LocalService']['CreateNote'](arg1, arg2, arg3, arg4);
 }
 
+export function DecryptFolder(arg1, arg2) {
+  return window['go']['main']['LocalService']['DecryptFolder'](arg1, arg2);
+}
+
 export function DecryptNote(arg1, arg2) {
   return window['go']['main']['LocalService']['DecryptNote'](arg1, arg2);
 }
@@ -64,6 +68,10 @@ export function DeleteNote(arg1) {
 
 export function EmptyTrash() {
   return window['go']['main']['LocalService']['EmptyTrash']();
+}
+
+export function EncryptFolder(arg1, arg2, arg3) {
+  return window['go']['main']['LocalService']['EncryptFolder'](arg1, arg2, arg3);
 }
 
 export function EncryptNote(arg1, arg2, arg3) {
@@ -104,6 +112,10 @@ export function GetVersion() {
 
 export function ImportNote(arg1, arg2, arg3) {
   return window['go']['main']['LocalService']['ImportNote'](arg1, arg2, arg3);
+}
+
+export function ListFolderUnlockStatus() {
+  return window['go']['main']['LocalService']['ListFolderUnlockStatus']();
 }
 
 export function ListFolders() {
@@ -224,6 +236,10 @@ export function SyncStatus() {
 
 export function TrashStats() {
   return window['go']['main']['LocalService']['TrashStats']();
+}
+
+export function UnlockFolder(arg1, arg2) {
+  return window['go']['main']['LocalService']['UnlockFolder'](arg1, arg2);
 }
 
 export function UnlockLocal(arg1) {

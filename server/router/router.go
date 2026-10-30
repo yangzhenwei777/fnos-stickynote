@@ -136,6 +136,10 @@ func Setup(uploadDir string, webDir string) http.Handler {
 		auth.POST("/folders", handler.CreateFolder)
 		auth.PUT("/folders/:id", handler.UpdateFolder)
 		auth.DELETE("/folders/:id", handler.DeleteFolder)
+		// v2.3.0 文件夹访问锁：加密/解密/本会话解锁
+		auth.PUT("/folders/:id/encrypt", handler.EncryptFolder)
+		auth.DELETE("/folders/:id/encrypt", handler.DecryptFolder)
+		auth.POST("/folders/:id/unlock", handler.UnlockFolder)
 		// 回收站（软删除）。列表走 /trash/notes，避免与 /notes/:id 的通配符冲突。
 		auth.GET("/trash/notes", handler.ListTrash)
 		auth.GET("/trash/stats", handler.TrashStats)    // v18.8 回收站可视化（条数+引用图片占用）

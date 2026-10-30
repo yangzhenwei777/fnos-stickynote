@@ -267,7 +267,8 @@ func memOutboxDB(t *testing.T) *sql.DB {
 		CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT, password_hash TEXT, role TEXT);
 		INSERT INTO users (id, username, password_hash, role) VALUES (1,'local','!','user');
 		CREATE TABLE note_folders (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, name TEXT, sort_order INTEGER DEFAULT 0,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP, sync_id TEXT, version INTEGER DEFAULT 1);
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP, sync_id TEXT, version INTEGER DEFAULT 1,
+			is_encrypted INTEGER DEFAULT 0, encrypt_password_hash TEXT DEFAULT '');
 		CREATE TABLE notes (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, title TEXT DEFAULT '',
 			content TEXT DEFAULT '', content_text TEXT DEFAULT '', tags TEXT DEFAULT '', is_encrypted INTEGER DEFAULT 0,
 			encrypt_password_hash TEXT DEFAULT '', encrypted_content TEXT DEFAULT '',

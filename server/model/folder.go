@@ -33,14 +33,17 @@ var (
 
 // Folder 文件夹（API 视图）。ID 为 nil 表示虚拟默认文件夹"我的笔记"。
 type Folder struct {
-	ID        *int64    `json:"id"` // null = 默认文件夹（folder_id IS NULL）
-	UserID    int64     `json:"-"`
-	Name      string    `json:"name"`
-	SortOrder int       `json:"sort_order"`
-	Version   int64     `json:"version"`    // P1 批次2（§18）：乐观锁/CAS 基点；虚拟默认文件夹恒为 0
-	NoteCount int       `json:"note_count"` // 未删除笔记数
-	IsDefault bool      `json:"is_default"`
-	CreatedAt time.Time `json:"created_at"`
+	ID        *int64 `json:"id"` // null = 默认文件夹（folder_id IS NULL）
+	UserID    int64  `json:"-"`
+	Name      string `json:"name"`
+	SortOrder int    `json:"sort_order"`
+	Version   int64  `json:"version"`    // P1 批次2（§18）：乐观锁/CAS 基点；虚拟默认文件夹恒为 0
+	NoteCount int    `json:"note_count"` // 未删除笔记数（锁定且本会话未解锁时为 0）
+	IsDefault bool   `json:"is_default"`
+	// v2.3.0 文件夹访问锁：仅暴露锁定态，密码哈希绝不下发。
+	IsEncrypted         bool      `json:"is_encrypted"`
+	EncryptPasswordHash string    `json:"-"`
+	CreatedAt           time.Time `json:"created_at"`
 }
 
 // ValidateFolderName 校验文件夹名：非空、≤32 字、不与默认文件夹重名。返回 trim 后的名称。
@@ -71,7 +74,8 @@ func ValidateFolderName(name string) (string, error) {
 //
 // 修法（本函数）：**先取完全部结果并释放连接，再发下一条查询**——countRows 先跑完即释放，
 // 之后才开 rows。同型模式禁止重新引入（回归钉 folder_deadlock_regression_test.go 双保险）。
-func ListFolders(userID int64) ([]Folder, error) {
+func ListFolders(userID int64, granted ...map[int64]struct{}) ([]Folder, error) {
+	grant := firstGranted(granted)
 	// 各文件夹笔记数（含回收站软删的不计，与删除校验口径一致）。
 	// ⚠ v21.177 死锁修复点：本查询必须在 rows 打开**之前**完成并释放连接，勿调换顺序。
 	countRows, err := database.DB.Query(
@@ -106,7 +110,7 @@ func ListFolders(userID int64) ([]Folder, error) {
 	}
 
 	rows, err := database.DB.Query(
-		"SELECT id, name, sort_order, version, created_at FROM note_folders WHERE user_id = ? ORDER BY sort_order ASC, id ASC",
+		"SELECT id, name, sort_order, version, is_encrypted, created_at FROM note_folders WHERE user_id = ? ORDER BY sort_order ASC, id ASC",
 		userID,
 	)
 	if err != nil {
@@ -129,12 +133,17 @@ func ListFolders(userID int64) ([]Folder, error) {
 	for rows.Next() {
 		var f Folder
 		var id int64
-		if err := rows.Scan(&id, &f.Name, &f.SortOrder, &f.Version, &f.CreatedAt); err != nil {
+		if err := rows.Scan(&id, &f.Name, &f.SortOrder, &f.Version, &f.IsEncrypted, &f.CreatedAt); err != nil {
 			return nil, err
 		}
 		f.ID = &id
 		f.UserID = userID
 		f.NoteCount = counts[id]
+		if f.IsEncrypted {
+			if _, ok := grant[id]; !ok {
+				f.NoteCount = 0 // 锁定且本会话未解锁：不泄漏条数
+			}
+		}
 		folders = append(folders, f)
 	}
 	return folders, nil
@@ -145,9 +154,9 @@ func GetFolder(id, userID int64) (*Folder, error) {
 	var f Folder
 	var fid int64
 	err := database.DB.QueryRow(
-		"SELECT id, name, sort_order, version, created_at FROM note_folders WHERE id = ? AND user_id = ?",
+		"SELECT id, name, sort_order, version, is_encrypted, encrypt_password_hash, created_at FROM note_folders WHERE id = ? AND user_id = ?",
 		id, userID,
-	).Scan(&fid, &f.Name, &f.SortOrder, &f.Version, &f.CreatedAt)
+	).Scan(&fid, &f.Name, &f.SortOrder, &f.Version, &f.IsEncrypted, &f.EncryptPasswordHash, &f.CreatedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrFolderNotFound
