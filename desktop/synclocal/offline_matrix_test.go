@@ -124,6 +124,16 @@ func TestOfflineWritesSurviveOutageAndAutoConverge(t *testing.T) {
 	if n := openCount(t, db); n != 0 {
 		t.Fatalf("收敛后不该留开账，得 %d", n)
 	}
+	// 收敛判定（服务端已见两笔 + outbox 清空）与调度器"下一轮成功"存在窗口：
+	// CI 高负载下收敛瞬间可能仍处于上一轮失败态，需等状态健康后再断言（2026-11-02 实锤）。
+	healthy := time.Now().Add(3 * time.Second)
+	for time.Now().Before(healthy) {
+		st := h.s.State()
+		if st.ConsecutiveFailures == 0 && !st.Offline && !st.LastOKAt.IsZero() {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 	if st := h.s.State(); st.ConsecutiveFailures != 0 || st.Offline || st.LastOKAt.IsZero() {
 		t.Fatalf("收敛后应清失败计数、退出离线态并留下成功时间: %+v", st)
 	}
