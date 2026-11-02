@@ -22,8 +22,17 @@ func TestFolderGrantSignParse(t *testing.T) {
 		t.Fatalf("claims 不符: %+v", g)
 	}
 
-	// 篡改签名必须拒绝
-	bad := tok[:len(tok)-1] + "A"
+	// 篡改签名必须拒绝。注意：签名是 32 字节的 base64.RawURLEncoding（43 字符），
+	// 末位字符只含 4 个数据位 + 2 个填充位——翻转末位可能解码出同一字节而误判"未篡改"；
+	// 固定写 "A" 也会在原末位恰为 A 时令牌未变。故取签名区中部并确定性翻转。
+	i := len(tok) - 10
+	badBytes := []byte(tok)
+	if badBytes[i] == 'A' {
+		badBytes[i] = 'B'
+	} else {
+		badBytes[i] = 'A'
+	}
+	bad := string(badBytes)
 	if _, err := ParseFolderGrant(bad); err == nil {
 		t.Fatal("篡改令牌应拒绝")
 	}
