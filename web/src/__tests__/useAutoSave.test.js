@@ -3,7 +3,7 @@
  * mock：api/note.updateNote、idb-keyval、stores/auth、utils/message、ElMessageBox
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { ref } from 'vue'
+import { ref, nextTick } from 'vue'
 
 // ---- mock 依赖 ----
 vi.mock('@/api/note', () => ({
@@ -411,5 +411,101 @@ describe('useAutoSave E7 排序竞态（v21.150）', () => {
     expect(saveConflict.value).toBe(true)
     // ③ B 的 version 不被顺手覆盖
     expect(ctx.currentNote.value.version).toBe(7)
+  })
+})
+
+// v2.3.2：保存前 no-op 守卫——title/content/tags 与最近一次落库状态一致时不写库，
+// 从保存层兜底"零编辑却被置顶"（编辑器规范化回声、误置 dirty 等路径）。
+describe('v2.3.2 保存前 no-op 守卫', () => {
+  function makeBaselineCtx() {
+    const ctx = makeCtx()
+    ctx.currentNote.value.is_encrypted = false
+    return ctx
+  }
+
+  it('内容与基线一致 → 跳过 updateNote 与列表补丁，dirty 复位、草稿清除', async () => {
+    const ctx = makeBaselineCtx()
+    const applied = []
+    const { saveNote, resetBaseline } = useAutoSave(ctx.currentNote, ctx.currentTagInput, ctx.isDirty, (...a) => applied.push(a), () => {})
+    resetBaseline()
+    ctx.isDirty.value = true
+
+    await saveNote(false)
+
+    expect(updateNote).not.toHaveBeenCalled()
+    expect(applied).toHaveLength(0)
+    expect(ctx.isDirty.value).toBe(false)
+    expect(idbDel).toHaveBeenCalled()
+  })
+
+  it('内容真实变化 → 正常写库并推进基线；再次保存同内容 → no-op', async () => {
+    const ctx = makeBaselineCtx()
+    const applied = []
+    const { saveNote, resetBaseline } = useAutoSave(ctx.currentNote, ctx.currentTagInput, ctx.isDirty, (...a) => applied.push(a), () => {})
+    resetBaseline()
+    ctx.currentNote.value.content = '<p>changed</p>'
+    updateNote.mockResolvedValueOnce({ data: { version: 2, updated_at: '2026-11-02T00:00:00Z' } })
+    ctx.isDirty.value = true
+
+    await saveNote(false)
+    expect(updateNote).toHaveBeenCalledTimes(1)
+    expect(applied).toHaveLength(1)
+
+    updateNote.mockClear()
+    ctx.isDirty.value = true
+    await saveNote(false)
+    expect(updateNote).not.toHaveBeenCalled()
+    expect(ctx.isDirty.value).toBe(false)
+  })
+
+  it('编辑器规范化基线同步后，规范化回声不写库', async () => {
+    const ctx = makeCtx()
+    ctx.currentNote.value = {
+      id: 1, title: 't', content: '<p>a</p>\n<p>b</p>', tags: '', is_encrypted: false
+    }
+    const { saveNote, resetBaseline, syncBaselineContent } = useAutoSave(ctx.currentNote, ctx.currentTagInput, ctx.isDirty, () => {}, () => {})
+    resetBaseline()
+    syncBaselineContent('<p>a</p><p>b</p>')
+    // 模拟编辑器规范化回声把父层内容改写成规范化结果并误置 dirty
+    ctx.currentNote.value.content = '<p>a</p><p>b</p>'
+    ctx.isDirty.value = true
+
+    await saveNote(false)
+    expect(updateNote).not.toHaveBeenCalled()
+    expect(ctx.isDirty.value).toBe(false)
+  })
+
+  it('saveBeforeSwitch 内容未变 → 直接放行且不写库', async () => {
+    const ctx = makeBaselineCtx()
+    const { saveBeforeSwitch, resetBaseline } = useAutoSave(ctx.currentNote, ctx.currentTagInput, ctx.isDirty, () => {}, () => {})
+    resetBaseline()
+    ctx.isDirty.value = true
+
+    const ok = await saveBeforeSwitch(ctx.currentNote.value)
+    expect(ok).toBe(true)
+    expect(updateNote).not.toHaveBeenCalled()
+    expect(ctx.isDirty.value).toBe(false)
+  })
+
+  it('草稿恢复不被吸收为基线 → 恢复内容仍会写库', async () => {
+    const ctx = makeCtx()
+    ctx.currentNote.value = {
+      id: 1, title: 't', content: '<p>server</p>', tags: '',
+      updated_at: new Date(0).toISOString(), is_encrypted: false
+    }
+    const { saveNote, checkDraft, resetBaseline } = useAutoSave(ctx.currentNote, ctx.currentTagInput, ctx.isDirty, () => {}, () => {})
+    resetBaseline()
+
+    idbGet.mockResolvedValueOnce({
+      title: 't', content: '<p>draft</p>', tags: '', saved_at: Date.now() + 100000
+    })
+    globalThis.ElMessageBox = { confirm: vi.fn().mockResolvedValue('confirm') }
+
+    await checkDraft(ctx.currentNote.value)
+    await nextTick()
+
+    ctx.isDirty.value = true
+    await saveNote(false)
+    expect(updateNote).toHaveBeenCalledWith(1, expect.objectContaining({ content: '<p>draft</p>' }))
   })
 })

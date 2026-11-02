@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { message } from '@/utils/message'
 import { updateNote } from '@/api/note'
 import { get as idbGet, set as idbSet, del as idbDel } from 'idb-keyval'
@@ -33,6 +33,54 @@ export function useAutoSave(currentNote, currentTagInput, isDirty, applySavedToL
   let savedHideTimer = null
   let saveSeq = 0 // v21.68 P2-07：保存序号，防并发保存乱序（旧响应覆盖新状态）
 
+  // v2.3.2 保存基线：title/content/tags 与最后一次已落库状态相同 ⇒ 不写库、不动列表。
+  // 笔记对象被整体替换（加载/新建/解密）时自动重取；草稿恢复属于"待保存变更"，不得重取。
+  let baseline = null
+  let suppressBaselineSync = false
+
+  function noteSnapshot(note, tags) {
+    return {
+      id: note.id,
+      title: note.title || '',
+      content: typeof note.content === 'string' ? note.content : '',
+      tags
+    }
+  }
+
+  function isUnchanged(note, tags) {
+    return !!(
+      baseline &&
+      note &&
+      baseline.id === note.id &&
+      baseline.title === (note.title || '') &&
+      baseline.content === (typeof note.content === 'string' ? note.content : '') &&
+      baseline.tags === tags
+    )
+  }
+
+  function resetBaseline(note = currentNote.value) {
+    baseline = note ? noteSnapshot(note, currentTagInput.value.join(', ')) : null
+  }
+
+  // 编辑器就绪后把"规范化后的内容"同步进基线：规范化本身不算修改，
+  // 但后续保存比较必须以编辑器实际序列化结果为准。
+  function syncBaselineContent(content) {
+    if (!baseline || !currentNote.value || isDirty.value) return
+    if (baseline.id !== currentNote.value.id || typeof content !== 'string') return
+    // 基线/父层内容同时对齐到规范化结果（视觉等价、不置 dirty）：
+    // 否则"编辑→预览"后按 Ctrl+S 会用原始串与规范化基线比较，仍被误判为变化。
+    baseline.content = content
+    currentNote.value.content = content
+  }
+
+  watch(currentNote, (note) => {
+    if (suppressBaselineSync) {
+      suppressBaselineSync = false
+      return
+    }
+    resetBaseline(note)
+  })
+
   const authStore = useAuthStore()
 
   function draftKey(noteId) {
@@ -42,6 +90,8 @@ export function useAutoSave(currentNote, currentTagInput, isDirty, applySavedToL
 
   async function saveDraft() {
     if (!currentNote.value || !isDirty.value) return
+    // v2.3.2：内容未实际变化（例如编辑器规范化回声）不落草稿，避免下次打开误报"未保存草稿"
+    if (isUnchanged(currentNote.value, currentTagInput.value.join(', '))) return
     // v21.58 F-11：加密笔记不持久化明文草稿——解锁后 currentNote.content 为明文，
     // 存入 IndexedDB 会泄露隐私（公共/共享电脑、浏览器 profile 被复制等场景）
     if (currentNote.value.is_encrypted) return
@@ -79,6 +129,8 @@ export function useAutoSave(currentNote, currentTagInput, isDirty, applySavedToL
           { confirmButtonText: '恢复草稿', cancelButtonText: '丢弃草稿', type: 'warning' }
         )
         if (currentNote.value?.id !== note.id) return // 已切换到其他笔记，放弃恢复
+        // 草稿是"相对服务端的待保存变更"：整体替换笔记时不得把草稿内容吸收为新基线
+        suppressBaselineSync = true
         currentNote.value = { ...currentNote.value, title: draft.title, content: draft.content }
         currentTagInput.value = draft.tags ? draft.tags.split(',').map(t => t.trim()).filter(Boolean) : []
         markDirty()
@@ -114,6 +166,27 @@ export function useAutoSave(currentNote, currentTagInput, isDirty, applySavedToL
     // 后续补丁/复位必须锚定「被保存的笔记」，不得再读响应时刻的 currentNote
     const savedNote = currentNote.value
     const savedTags = currentTagInput.value.join(', ')
+    // 本次实际提交的字段快照（响应期间用户可能继续编辑原对象）
+    const savedTitle = savedNote.title
+    const savedContent = savedNote.content
+    // v2.3.2：与最近一次已落库状态完全一致 ⇒ 不写库、不动 updated_at、不重排列表。
+    // 这条兜底独立于编辑器回流守卫：任何路径误置 dirty 都不会再把笔记顶到列表顶部。
+    if (!saving.value && isUnchanged(savedNote, savedTags)) {
+      if (currentNote.value?.id === savedNote.id) {
+        clearTimeout(autoSaveTimer)
+        clearTimeout(draftTimer)
+      }
+      await clearDraft(savedNote.id)
+      if (currentNote.value?.id === savedNote.id && isUnchanged(savedNote, currentTagInput.value.join(', '))) {
+        isDirty.value = false
+        saveStatus.value = 'saved'
+        clearTimeout(savedHideTimer)
+        savedHideTimer = setTimeout(() => {
+          if (saveStatus.value === 'saved') saveStatus.value = ''
+        }, 2000)
+      }
+      return
+    }
     const seq = ++saveSeq // v21.68 P2-07：本次保存的序号
     saving.value = true
     saveStatus.value = 'saving'
@@ -126,6 +199,10 @@ export function useAutoSave(currentNote, currentTagInput, isDirty, applySavedToL
         payload.password = pwd
       }
       const resp = await updateNote(savedNote.id, payload)
+      // 保存成功：基线推进到本次实际落库的字段快照（迟到响应/切换笔记不得覆盖基线）
+      if (seq === saveSeq && currentNote.value?.id === savedNote.id) {
+        baseline = { id: savedNote.id, title: savedTitle, content: savedContent, tags: savedTags }
+      }
       // 同步后端递增后的 version，避免下次保存误报冲突（axios 拦截器返回完整 response，数据在 resp.data）
       if (resp && resp.data && typeof resp.data.version === 'number') {
         savedNote.version = resp.data.version
@@ -191,11 +268,20 @@ export function useAutoSave(currentNote, currentTagInput, isDirty, applySavedToL
       const fresh = ensureFreshContent()
       if (typeof fresh === 'string' && fresh) prevNote.content = fresh
     }
+    const tags = currentTagInput.value.join(', ')
+    // v2.3.2：切换前同样做 no-op 守卫——草稿/回调误置 dirty 时不写库、不重排
+    if (!saving.value && isUnchanged(prevNote, tags)) {
+      clearTimeout(autoSaveTimer)
+      await clearDraft(prevNote.id)
+      isDirty.value = false
+      return true
+    }
+    const savedTitle = prevNote.title
+    const savedContent = prevNote.content
     clearTimeout(autoSaveTimer)
     try {
-      const tags = currentTagInput.value.join(', ')
       // v21.72 P2-08：切换前保存同样携带乐观锁版本号
-      const payload = { title: prevNote.title, content: prevNote.content, tags, version: prevNote.version || 0 }
+      const payload = { title: savedTitle, content: savedContent, tags, version: prevNote.version || 0 }
       // v21.46：切换前保存同样注入加密密码（此前加密笔记切换时保存被静默吞掉）
       const pwd = typeof getEncryptPassword === 'function' ? getEncryptPassword() : ''
       if (prevNote.is_encrypted && pwd) {
@@ -210,6 +296,7 @@ export function useAutoSave(currentNote, currentTagInput, isDirty, applySavedToL
       // v21.84：切换前保存同样把结果同步进列表（含新 version），防止列表缓存过期版本导致后续 409
       // v21.150 E7：排序键带服务端 updated_at（单一时间源）
       applySavedToLists(prevNote.id, prevNote.title, prevNote.content, tags, prevNote.version, resp?.data?.updated_at)
+      baseline = { id: prevNote.id, title: savedTitle, content: savedContent, tags }
       saveStatus.value = 'saved'
       clearTimeout(savedHideTimer)
       savedHideTimer = setTimeout(() => {
@@ -280,6 +367,7 @@ export function useAutoSave(currentNote, currentTagInput, isDirty, applySavedToL
     saving, saveStatus,
     saveConflict, remoteDeleted,
     markDirty, saveNote, saveBeforeSwitch, checkDraft, clearDraft, clearSaveState,
+    syncBaselineContent, resetBaseline,
     handleKeydown, handleBeforeUnload, cleanupTimers
   }
 }

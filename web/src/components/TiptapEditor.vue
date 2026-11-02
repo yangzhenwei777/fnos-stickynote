@@ -72,7 +72,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['update:modelValue'])
+const emit = defineEmits(['update:modelValue', 'ready'])
 
 // ---- 工具栏线性图标（Feather/Lucide 风格，参照为知笔记扁平线框设计）----
 
@@ -86,6 +86,9 @@ const emit = defineEmits(['update:modelValue'])
 // 100~600ms。新实现：① 内容真相留在 ProseMirror，emit 防抖合并；② watch 用
 // lastEmittedHtml 字符串比对，不再二次 getHTML()；③ 工具栏高亮由 onTransaction 驱动
 // 轻量 toolbarTick，不再依赖父组件重渲染；④ 关键路径经 flushContent() 立即同步。
+// 回流基线必须取编辑器**规范化后**的 HTML（onMount 时落定）。若用原始 props 串作基线，
+// 换行、链接 rel、b→strong、样式顺序、表格列宽投影等规范化差异会被误判为用户编辑 ⇒
+// 点【编辑】再点【预览】即 markDirty → 自动保存 → updated_at 变化 → 笔记被置顶。
 let lastEmittedHtml = props.modelValue
 let emitTimer = null
 let firstDirtyAt = 0
@@ -222,6 +225,12 @@ const editor = useEditor({
     StickyTableCell
   ],
   content: stripLegacyColWidthArtifacts(props.modelValue),
+  onMount: ({ editor: ed }) => {
+    // onCreate 是 setTimeout(0) 异步事件，不能作为"未修改"基线落定点；
+    // onMount 在视图创建后同步触发，先于任何用户/程序化事务。
+    lastEmittedHtml = ed.getHTML()
+    emit('ready', lastEmittedHtml)
+  },
   onUpdate: () => {
     // v21.85：不再每事务全量 getHTML() 回流，防抖合并后统一发出
     scheduleEmit()
@@ -256,11 +265,12 @@ watch(() => props.modelValue, (newValue) => {
   // v21.85：与上次已发出内容比对即可识别"自身 emit 的回声"，
   // 不再调 editor.getHTML() 二次序列化；仅外部变更（草稿恢复/解密/切换笔记）才 setContent
   if (newValue === lastEmittedHtml) return
-  lastEmittedHtml = newValue
   // v21.109 tiptap 3.x：v3 的 setContent 默认触发 update（v2 默认不触发）——
   // 必须显式 emitUpdate:false，否则外部 set 会回声触发 onUpdate→scheduleEmit→dirty 误置。
   // v2.2.2 R3：外部变更（草稿恢复/解密/切换笔记）同样只做存量 > 段落清理（字符串比较仍用原始串）
   ed.commands.setContent(stripLegacyColWidthArtifacts(newValue), { emitUpdate: false })
+  // 外部变更后的回声基线同样取规范化结果，避免下一次 flush 把规范化差异当成用户编辑
+  lastEmittedHtml = ed.getHTML()
 })
 
 </script>

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.3.2
+
+- Fix: opening a note, entering edit mode without changing anything, then switching back to preview no longer marks the note as modified or moves it to the top of the list.
+- Root cause: the editor's normalization of stored HTML (line breaks, link `target/rel`, `b`→`strong`, `div`→`p`, style order, table width projection) was treated as a user edit.
+- Fix A: the editor flush baseline now uses the editor's normalized HTML (captured synchronously on `onMount`).
+- Fix B: the save layer keeps a `title/content/tags` baseline and skips no-op writes entirely.
+- Shared by desktop and web; no schema changes, no new dependencies.
+
 ## 2.3.1
 
 - Desktop/web API contract alignment: the "Export all" summary now reports "N notes in encrypted folders"; the note list re-sorts by updated time after saving on desktop; operations on locked folders return 423 with an "unlock first" message; restored notes expose `folder_locked`; moved notes return `version`; desktop `public-config` carries the default trash retention days.

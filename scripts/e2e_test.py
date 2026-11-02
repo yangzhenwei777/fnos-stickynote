@@ -1117,6 +1117,69 @@ def main():
         finally:
             gpage.close()
 
+        # -------------------------------------------------------------------
+        # §39 编辑→预览零改动不置顶（v2.3.2）
+        #     Tiptap 会把存储 HTML 规范化（换行/链接 rel/b→strong/样式顺序/表格列宽）。
+        #     旧实现把规范化回声当用户编辑 → 自动保存 → updated_at 变化 → 列表置顶。
+        #     本节用 API 直接造旧格式内容，走真实 UI 的【编辑】→【预览】，
+        #     断言：零 PUT 请求、列表位置不变、updated_at 不变。
+        # -------------------------------------------------------------------
+        print("\n[E2E] §39 编辑→预览零改动不置顶（v2.3.2）...")
+        try:
+            page.goto(f"{http_base}/", wait_until="networkidle")
+            wait(600)
+
+            def _create_probe(title, content):
+                r = page.request.post(f"{http_base}/api/notes",
+                                      data={"title": title, "content": content})
+                return r.json() if r.ok else None
+
+            probe_a = _create_probe("§39 误置顶探针A",
+                                    '<p>a</p>\n<p><a href="https://example.com">x</a></p>')
+            wait(1100)
+            _create_probe("§39 探针B", "<p>b</p>")
+            wait(1100)
+            _create_probe("§39 探针C", "<p>c</p>")
+            t("§39 探针笔记创建成功", bool(probe_a and probe_a.get("id")), probe_a)
+
+            page.goto(f"{http_base}/", wait_until="networkidle")
+            wait(1200)
+
+            def _sidebar_order():
+                return page.evaluate(
+                    "() => [...document.querySelectorAll('.note-item')].map(e => e.innerText.trim())"
+                )
+
+            order_before = _sidebar_order()
+            idx_before = next(i for i, x in enumerate(order_before) if "§39 误置顶探针A" in x)
+            page.locator(".note-item", has_text="§39 误置顶探针A").first.click()
+            page.wait_for_selector(".view-actions", timeout=15000)
+            wait(500)
+            updated_before = page.request.get(f"{http_base}/api/notes/{probe_a['id']}").json().get("updated_at")
+
+            puts = []
+            def _on_request(req):
+                if req.method == "PUT" and f"/api/notes/{probe_a['id']}" in req.url:
+                    puts.append(req.url)
+            page.on("request", _on_request)
+
+            page.click('button:has-text("编辑")')
+            page.wait_for_selector(".tiptap", timeout=15000)
+            wait(400)
+            page.locator('.editor-header button:has-text("预览")').click()
+            wait(1800)
+            page.remove_listener("request", _on_request)
+
+            order_after = _sidebar_order()
+            idx_after = next(i for i, x in enumerate(order_after) if "§39 误置顶探针A" in x)
+            updated_after = page.request.get(f"{http_base}/api/notes/{probe_a['id']}").json().get("updated_at")
+
+            t("§39 零改动编辑→预览不产生 PUT", len(puts) == 0, puts)
+            t("§39 列表位置不变", idx_before == idx_after, f"{idx_before}->{idx_after}")
+            t("§39 updated_at 不变", updated_before == updated_after, f"{updated_before}->{updated_after}")
+        except Exception as e:
+            t(f"§39 零改动置顶回归异常: {e}", False)
+
         page.close()
         browser.close()
 

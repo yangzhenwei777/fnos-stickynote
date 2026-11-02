@@ -303,6 +303,7 @@
               v-if="!previewMode"
               ref="editorRef"
               v-model="currentNote.content"
+              @ready="syncBaselineContent"
               @update:model-value="markDirty"
             />
             <div
@@ -552,7 +553,7 @@ const ensureFreshContent = () => {
   return null
 }
 
-const { saveStatus, markDirty, saveBeforeSwitch, checkDraft, clearDraft, clearSaveState, saveConflict, handleKeydown, handleBeforeUnload, cleanupTimers } = useAutoSave(currentNote, currentTagInput, isDirty, applySavedToLists, () => encryptPassword.value, ensureFreshContent)
+const { saveStatus, markDirty, saveBeforeSwitch, checkDraft, clearDraft, clearSaveState, saveConflict, syncBaselineContent, resetBaseline, handleKeydown, handleBeforeUnload, cleanupTimers } = useAutoSave(currentNote, currentTagInput, isDirty, applySavedToLists, () => encryptPassword.value, ensureFreshContent)
 
 const { fileInput, handleImportFile: _import } = useNoteImport()
 
@@ -617,6 +618,7 @@ async function createNewNote() {
   // 当前预览中的笔记误切进编辑态
   const created = await _create(createFolderParam.value)
   if (!created) return
+  resetBaseline(currentNote.value)
   isDirty.value = false
   editMode.value = true
   previewMode.value = false
@@ -642,6 +644,7 @@ async function handleImportFile(e) {
   // 桌面端经 FormData 的 folder_id 落到 Go 侧；Web 端忽略该字段（行为不变）。
   const imported = await _import(e, notes, currentNote, currentTagInput, folderStore.listParam)
   if (!imported) return
+  resetBaseline(currentNote.value)
   isDirty.value = false
   editMode.value = false
   sidebarOpen.value = false
@@ -659,6 +662,7 @@ async function selectNote(note) {
     if (!saved) return
   }
   await _select(note)
+  resetBaseline(currentNote.value)
   isDirty.value = false
   editMode.value = false
   if (isMobile.value) sidebarOpen.value = false
@@ -913,6 +917,7 @@ onMounted(async () => {
   // v21.106 P1-8：深链/移动端入口同样触发草稿恢复提示
   // （此前 checkDraft 仅挂在 selectNote 上，从 /notes-list 点卡片或 ?note_id= 直达永不提示）
   if (noteId && currentNote.value && String(currentNote.value.id) === String(noteId)) {
+    resetBaseline(currentNote.value)
     await checkDraft(currentNote.value)
   }
   // v21.118 评审修复（问题①）：暗色下按 WCAG 4.5:1 保色相提亮低对比文字（仅显示层，不改存储/导出）
@@ -967,6 +972,7 @@ watch(() => route.query.note_id, async (newId) => {
   clearSaveState()
   // v21.106 P1-8：URL 直达路径同样触发草稿恢复提示
   if (currentNote.value && String(currentNote.value.id) === String(newId)) {
+    resetBaseline(currentNote.value)
     await checkDraft(currentNote.value)
   }
 })
@@ -989,8 +995,9 @@ watch(saveConflict, (v) => {
     editMode.value = false
     const id = currentNote.value.id
     await _select(currentNote.value)
-    if (currentNote.value && String(currentNote.value.id) === String(id) && !currentNote.value.is_encrypted) {
-      await checkDraft(currentNote.value)
+    if (currentNote.value && String(currentNote.value.id) === String(id)) {
+      resetBaseline(currentNote.value)
+      if (!currentNote.value.is_encrypted) await checkDraft(currentNote.value)
     }
   }).catch(() => { /* 继续编辑：自动保存已暂停，Ctrl+S 可再次尝试并重新弹出处理对话框 */ })
 })
