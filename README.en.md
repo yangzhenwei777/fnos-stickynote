@@ -2,7 +2,7 @@
 
 A lightweight, polished multi-user note-taking app for fnOS NAS (home/team use). Rich-text editing, full-text search, note encryption, TOTP two-factor auth, and per-user data isolation. It can be deployed as an fnOS FPK app, a standalone binary, or a Windows desktop client.
 
-Current version: **2.3.1** (folder encryption / access lock + desktop web contract alignment: locked folders hidden from every surface, per-session unlock, relock on logout/tab close; desktop export summary, sorting and locked-folder 423 guidance aligned with web)
+Current version: **2.3.2** (fix: entering edit mode without changing anything and switching back to preview no longer marks the note as modified or moves it to the top; shared by desktop and web. Folder encryption / access lock remains available from earlier releases)
 
 ## Features
 
