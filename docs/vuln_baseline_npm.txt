@@ -61,3 +61,23 @@ deepmerge | DUE:2027-01-31 | RUNTIME:no | REASON:同上 GHSA-gcqx-w48m-w2h4 | OW
 workbox-build | DUE:2027-01-31 | RUNTIME:no | REASON:同上 GHSA-gcqx-w48m-w2h4（经 @rollup/plugin-node-resolve 链） | OWNER:项目维护者
 vite-plugin-pwa | DUE:2027-01-31 | RUNTIME:no | REASON:同上 GHSA-gcqx-w48m-w2h4（经 workbox-build 链；降级修复方案不可取） | OWNER:项目维护者
 # fast-uri：v21.103 曾用 npm overrides 钉 3.1.6；**196 轮复核发现 3.1.6 自身不可达面已失效**（官方 advisory 要求 >=3.1.8），已把 overrides 升到 3.1.8 根除，挂账条目撤销
+# ---- 2026-11-02 2.3.2 轮（npm audit 公告库新增，全部 dev/构建期；follow-redirects high 已由 npm audit fix 升 1.16.2 根除）----
+# 触发：公共仓 CI frontend job 报 14 条新增（eslint / vite-plugin-pwa / js-beautify 工具链）。
+# 可达性：均为构建、测试、lint 工具链，不进 fpk/桌面运行时产物；运行面仅 axios→follow-redirects（已修复）。
+# 处置：⏳ 挂账（dev/构建期不可达；eslint/vite-plugin-pwa 的修复建议为 semver-major，非本轮安全修复范围），
+#       复核期限 2027-01-31；随上游次版本升级自然消化。
+GHSA-g3hv-75wg-m249 | DUE:2027-01-31 | RUNTIME:no | REASON:minimatch globparts DoS，eslint/vite-plugin-pwa 构建测试链，不进运行时 | OWNER:项目维护者
+minimatch | DUE:2027-01-31 | RUNTIME:no | REASON:同上 GHSA-g3hv-75wg-m249（链上包名口径） | OWNER:项目维护者
+@eslint-community/eslint-utils | DUE:2027-01-31 | RUNTIME:no | REASON:eslint 工具链，构建/测试期；修复建议 eslint 4.0.0 为 semver-major | OWNER:项目维护者
+@eslint/config-array | DUE:2027-01-31 | RUNTIME:no | REASON:同上（minimatch 链） | OWNER:项目维护者
+@eslint/js | DUE:2027-01-31 | RUNTIME:no | REASON:同上（eslint 链） | OWNER:项目维护者
+eslint | DUE:2027-01-31 | RUNTIME:no | REASON:lint 工具链，不进运行时 | OWNER:项目维护者
+eslint-plugin-vue | DUE:2027-01-31 | RUNTIME:no | REASON:lint 工具链，不进运行时 | OWNER:项目维护者
+vue-eslint-parser | DUE:2027-01-31 | RUNTIME:no | REASON:lint 工具链，不进运行时 | OWNER:项目维护者
+@vue/test-utils | DUE:2027-01-31 | RUNTIME:no | REASON:Vitest 测试工具链，不进运行时 | OWNER:项目维护者
+js-beautify | DUE:2027-01-31 | RUNTIME:no | REASON:测试工具链（@vue/test-utils 链） | OWNER:项目维护者
+editorconfig | DUE:2027-01-31 | RUNTIME:no | REASON:测试工具链（js-beautify 链） | OWNER:项目维护者
+@trickfilm400/rollup-plugin-off-main-thread | DUE:2027-01-31 | RUNTIME:no | REASON:vite-plugin-pwa/workbox 构建链，不进运行时 | OWNER:项目维护者
+ejs | DUE:2027-01-31 | RUNTIME:no | REASON:同上（workbox-build 链） | OWNER:项目维护者
+jake | DUE:2027-01-31 | RUNTIME:no | REASON:同上（workbox-build 链） | OWNER:项目维护者
+filelist | DUE:2027-01-31 | RUNTIME:no | REASON:同上（jake 链） | OWNER:项目维护者
