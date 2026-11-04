@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.3.3
+
+- Refactor: the six oversized Vue components (note list, editor toolbar, note workspace, profile, sidebar, desktop account card) are now all under the 800-line soft limit. Logic moved into composables; profile tabs became child components; list/profile styles moved to shared prefixed CSS. Zero UI or behavior change (templates/styles byte-compared against the 2.3.2 baseline).
+- fpk: full icon set (icon_0/64/128/256/512, 512 root icon) and stricter package assertions (ELF arch, single binary, CRLF, transparent icon corners).
+- No schema changes, no new dependencies.
+
 ## 2.3.2
 
 - Fix: opening a note, entering edit mode without changing anything, then switching back to preview no longer marks the note as modified or moves it to the top of the list.

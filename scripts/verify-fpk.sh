@@ -8,6 +8,18 @@ FAIL=0
 fail() { echo "  ❌ $1"; FAIL=1; }
 ok()   { echo "  ✅ $1"; }
 
+# 解释器解析（v2.3.2 图标轮）：裸 Git-Bash 下 `python` 可能是 WindowsApps 占位桩（rc=49），
+# 会让 JSON 校验误报「JSON 非法」。优先 VENV_PY / 项目 venv，最后才退回 PATH。
+SCRIPT_DIR=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
+SRC_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
+REPO_ROOT=$(cd "$SRC_ROOT/../.." && pwd)
+py_ok() { [ -n "$1" ] && "$1" -c "pass" >/dev/null 2>&1; }
+PY=""
+for cand in "${VENV_PY:-}" "$REPO_ROOT/envs/default/Scripts/python.exe" "python" "python3"; do
+  if py_ok "$cand"; then PY="$cand"; break; fi
+done
+[ -n "$PY" ] || { echo "  ❌ 找不到可用 Python（试过 VENV_PY / 项目 venv / python / python3）"; exit 2; }
+
 [ $# -ge 1 ] || { echo "用法: $0 <fpk 文件> [...]"; exit 2; }
 
 for FPK in "$@"; do
@@ -41,7 +53,7 @@ for FPK in "$@"; do
   for j in config/privilege config/resource; do
     if [ -f "$TMP/$j" ]; then
       JPATH=$(cygpath -w "$TMP/$j" 2>/dev/null || echo "$TMP/$j")
-      python -m json.tool "$JPATH" >/dev/null 2>&1 && ok "JSON 合法 $j" || fail "JSON 非法 $j"
+      "$PY" -m json.tool "$JPATH" >/dev/null 2>&1 && ok "JSON 合法 $j" || fail "JSON 非法 $j"
     else
       fail "config 缺失 $j"
     fi
@@ -68,6 +80,19 @@ for FPK in "$@"; do
     fi
   else
     fail "desktop_uidir 解析为空"
+  fi
+
+  # 5b) 图标槽位 / 尺寸 / 四角透明（v2.3.2 图标轮新增）
+  # 事故背景：ui/config 用 images/icon_{0}.png 模板，包内却只有 64/256 —— 缺 {0} 兜底槽
+  # 与 128/512 阶梯，根 ICON.PNG 仅 64x64。fnOS 取图有三条独立通道（ui/images 槽位 /
+  # 根 ICON.PNG / 商店 icon_url），任一通道拿到小图就糊；verify-fpk 此前只查「文件存在」。
+  if [ -n "$UIDIR" ] && [ -d "$TMP/app_inner/$UIDIR" ]; then
+    TMP_W=$(cygpath -w "$TMP" 2>/dev/null || echo "$TMP")
+    if "$PY" "$SCRIPT_DIR/check-fpk-icons.py" "$TMP_W/app_inner" "$UIDIR" "$TMP_W"; then
+      ok "图标槽位/尺寸/四角透明 全部通过"
+    else
+      fail "图标校验未通过（详见上方 FAIL 行）"
+    fi
   fi
 
   # 6) app.tgz 内 server/ www/ 存在；可执行位仅提示（Windows 打包归档权限位不可控，
@@ -105,6 +130,100 @@ for FPK in "$@"; do
       fail "二进制内未找到版本号字面量 '$FV' —— 构建漏了 -ldflags=\"-s -w -X main.Version=\$VERSION\"，「关于」将显示错误版本号"
     fi
   fi
+
+  # 8) 产物级断言（2026-11-03 发布工程轮，借鉴 fn-knock package-fpk 校验）
+  # 8a) server/ 恰 1 个文件 —— 防历史残留二进制混入（206 轮事故类型：多一个 37.8MB 旧产物）
+  SERVER_DIR="$TMP/app_inner/server"
+  if [ -d "$SERVER_DIR" ]; then
+    SCOUNT=$(find "$SERVER_DIR" -maxdepth 1 -type f | wc -l | tr -d ' ')
+    if [ "$SCOUNT" = "1" ]; then
+      ok "server/ 恰 1 个文件（无残留二进制）"
+    else
+      fail "server/ 内文件数=${SCOUNT}（必须恰 1）——疑似历史残留二进制混入"
+    fi
+  else
+    fail "app 内缺失 server/ 目录"
+  fi
+
+  # 8b) 二进制 ELF 架构必须匹配 manifest.platform —— 防装错架构（装上即起不来）
+  if [ -f "$BIN" ]; then
+    PLAT=$(sed -n 's/^platform[[:space:]]*=[[:space:]]*//p' "$MF" | head -1 | tr -d '[:space:]')
+    case "$PLAT" in
+      x86) EXPECT_ARCH="x86-64" ;;
+      arm) EXPECT_ARCH="aarch64" ;;
+      *)   EXPECT_ARCH="" ;;
+    esac
+    if [ -z "$EXPECT_ARCH" ]; then
+      echo "  ⚠️ platform=${PLAT} 未识别，跳过 ELF 架构断言"
+    elif command -v file >/dev/null 2>&1; then
+      FINFO="$(file -b "$BIN" 2>/dev/null || echo "<file 命令失败>")"
+      if printf '%s\n' "$FINFO" | grep -q "$EXPECT_ARCH"; then
+        ok "二进制 ELF 架构 = ${EXPECT_ARCH}"
+      else
+        fail "二进制不是 Linux ${EXPECT_ARCH}（platform=${PLAT}）：${FINFO}"
+      fi
+    else
+      fail "缺少 file 命令，无法断言二进制 ELF 架构（Git Bash/CI 均自带；如确需跳过请说明环境）"
+    fi
+  fi
+
+  # 8c) 全包禁止 macOS 元数据（.DS_Store / AppleDouble ._ 文件）
+  MACBAD=0
+  for tgz in "$FPK_SAFE" "$TMP/app.tgz"; do
+    if tar -tzf "$tgz" 2>/dev/null | grep -Eq '(^|/)\.DS_Store$|(^|/)\._'; then
+      fail "macOS 元数据混入：${tgz}"
+      MACBAD=1
+    fi
+  done
+  [ "$MACBAD" = "0" ] && ok "无 macOS 元数据（.DS_Store/._*）"
+
+  # 8d) www/index.html 引用的本地产物必须存在 —— 防 www 不完整/新旧 chunk 断链
+  WWWW=$(cygpath -w "$TMP/app_inner/www" 2>/dev/null || echo "$TMP/app_inner/www")
+  if [ -f "$TMP/app_inner/www/index.html" ]; then
+    if "$PY" - "$WWWW" <<'PYEOF'
+import re
+import sys
+from pathlib import Path
+
+www = Path(sys.argv[1])
+html = (www / "index.html").read_text(encoding="utf-8", errors="ignore")
+refs = re.findall(r'(?:src|href)=["\']([^"\']+)["\']', html)
+bad = []
+for r in refs:
+    if r.startswith(("http://", "https://", "data:", "mailto:", "javascript:", "//")):
+        continue
+    p = r.split("#")[0].split("?")[0]
+    p = p.lstrip("/")
+    if not p or "." not in Path(p).name:
+        continue
+    if not (www / p).exists():
+        bad.append(r)
+if bad:
+    print("  ❌ index.html 引用了 www 内不存在的本地产物：")
+    for b in bad[:10]:
+        print("       ", b)
+    sys.exit(1)
+sys.exit(0)
+PYEOF
+    then
+      ok "index.html 引用的本地产物完整"
+    else
+      fail "www 资源断链（www 不完整或新旧 chunk 混装）"
+    fi
+  fi
+
+  # 8e) 生命周期钩子 CRLF 检查（cmd/*、wizard/*，字节级比对；CRLF 致 shebang rc=127）
+  CRLF_BAD=0
+  for d in cmd wizard; do
+    for f in "$TMP/$d"/*; do
+      [ -f "$f" ] || continue
+      if ! "$PY" -c "import sys; sys.exit(1 if bytes([13,10]) in open(sys.argv[1],'rb').read() else 0)" "$(cygpath -w "$f" 2>/dev/null || echo "$f")"; then
+        fail "CRLF 行尾：${d}/$(basename "$f")（Linux 上钩子 rc=127 不执行，永久阻断升级）"
+        CRLF_BAD=1
+      fi
+    done
+  done
+  [ "$CRLF_BAD" = "0" ] && ok "生命周期钩子全部 LF（cmd/ wizard/）"
 
   rm -rf "$TMP"
   echo ""

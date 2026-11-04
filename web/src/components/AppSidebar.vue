@@ -294,35 +294,11 @@
       </el-dropdown>
     </div>
 
-    <!-- 新建/重命名文件夹弹窗 -->
-    <el-dialog
-      v-model="dialogVisible"
-      :title="dialogMode === 'create' ? '新建文件夹' : '重命名文件夹'"
-      width="400px"
-      :close-on-click-modal="false"
-      append-to-body
-    >
-      <el-input
-        v-model="dialogInput"
-        :placeholder="dialogMode === 'create' ? '请输入文件夹名称' : '请输入新名称'"
-        maxlength="32"
-        show-word-limit
-        clearable
-        @keyup.enter="submitDialog"
-      />
-      <template #footer>
-        <el-button @click="dialogVisible = false">
-          取消
-        </el-button>
-        <el-button
-          type="primary"
-          :loading="dialogLoading"
-          @click="submitDialog"
-        >
-          确定
-        </el-button>
-      </template>
-    </el-dialog>
+    <!-- 新建/重命名文件夹弹窗（2026-11-03 拆分轮抽为 FolderEditDialog，逻辑见该组件） -->
+    <FolderEditDialog
+      ref="folderDialog"
+      @created="foldersExpanded = true"
+    />
   </aside>
   <!-- 展开态右缘分割线：拖动自定义宽度（收起态隐藏） -->
   <DragResizer
@@ -345,6 +321,7 @@ import { useFolderSecurityStore } from '@/stores/folderSecurity'
 import { useTheme } from '@/composables/useTheme'
 import { message } from '@/utils/message'
 import DragResizer from '@/components/DragResizer.vue'
+import FolderEditDialog from '@/components/FolderEditDialog.vue'
 import { useConfigStore } from '@/stores/config'
 import { showAbout } from '@/composables/useAbout'
 
@@ -405,58 +382,16 @@ function selectFolder(key) {
   router.push('/')
 }
 
-// ---- 文件夹操作 ----
-const dialogVisible = ref(false)
-const dialogMode = ref('create') // create | rename
-const dialogInput = ref('')
-const dialogLoading = ref(false)
-let renameTarget = null
+// ---- 文件夹操作（弹窗逻辑 2026-11-03 拆分轮抽至 FolderEditDialog.vue）----
+const folderDialog = ref(null)
 
 function openCreateDialog() {
-  dialogMode.value = 'create'
-  dialogInput.value = ''
-  dialogVisible.value = true
-}
-
-function openRenameDialog(f) {
-  dialogMode.value = 'rename'
-  renameTarget = f
-  dialogInput.value = f.name
-  dialogVisible.value = true
-}
-
-async function submitDialog() {
-  const name = dialogInput.value.trim()
-  if (!name) {
-    message.error('文件夹名称不能为空')
-    return
-  }
-  dialogLoading.value = true
-  try {
-    if (dialogMode.value === 'create') {
-      const f = await folderStore.createNewFolder(name)
-      if (f) {
-        dialogVisible.value = false
-        foldersExpanded.value = true
-        // v21.107 P1-11：创建后自动切入新文件夹——与移动端行为统一（此前 PC 停留原地易被误以为没生效）
-        folderStore.selectFolder(f.id)
-        message.success('创建成功')
-      }
-    } else if (renameTarget) {
-      const ok = await folderStore.renameFolderById(renameTarget.id, name)
-      if (ok) {
-        dialogVisible.value = false
-        message.success('重命名成功')
-      }
-    }
-  } finally {
-    dialogLoading.value = false
-  }
+  folderDialog.value?.openCreate()
 }
 
 async function handleFolderCmd(cmd, f) {
   if (cmd === 'rename') {
-    openRenameDialog(f)
+    folderDialog.value?.openRename(f)
   } else if (cmd === 'encrypt') {
     folderSecurity.openEncrypt(f)
   } else if (cmd === 'decrypt') {

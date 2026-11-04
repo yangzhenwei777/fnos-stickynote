@@ -12,7 +12,7 @@ VERSION=$(cat VERSION)
 [ -z "$VERSION" ] && echo "❌ 无法获取版本号" && exit 1
 
 cd server
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath \
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -buildvcs=false \
     -ldflags="-s -w -X main.Version=${VERSION}" \
     -o sticky-note-linux-amd64 .
 

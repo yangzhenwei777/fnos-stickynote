@@ -1,0 +1,433 @@
+/* NotesListView 列表页样式（2026-11-03 巨型 Vue 拆分 刀6，自 <style scoped> 原样迁出）。
+   一律以 .notes-list-container 前缀限定作用域——page-title/search-box/create-btn/import-btn/
+   empty-container 等类名在 NotesView/Login 等处各有同名定义，禁止去掉前缀。
+   原 :deep(X) 已转普通后代选择器；:global(.nl-f-*) 项原样保留。 */
+.notes-list-container .notes-list-container {
+  padding: 24px 32px;
+}
+.notes-list-container .notes-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.notes-list-container .header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.notes-list-container .page-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+  margin: 0;
+}
+.notes-list-container .page-title .el-icon {
+  color: #2563eb;
+}
+.notes-list-container /* v21.89 文件夹下拉按钮：项目标准边框（10px 圆角 + var(--border-light)，
+   与页面搜索框/下拉控件一致；用户反馈 v21.87 胶囊 999px 样式不一致） */
+.nl-folder-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-light);
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 13px;
+  max-width: 180px;
+  transition: border-color 0.2s, color 0.2s;
+}
+.notes-list-container .nl-folder-trigger:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+.notes-list-container .nl-folder-caret {
+  color: var(--text-muted);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.notes-list-container /* 下拉项（Teleport 到 body，需全局选择器） */
+:global(.nl-f-item) {
+  flex: 1;
+}
+:global(.nl-f-check) {
+  color: var(--primary-color);
+  margin-left: auto;
+}
+.notes-list-container /* v21.96 需求：新建文件夹菜单项图标（与 PC 端侧栏 + 图标风格一致） */
+:global(.nl-f-new-icon) {
+  color: var(--primary-color);
+  margin-right: 6px;
+}
+.notes-list-container .notes-count {
+  font-size: 14px;
+  /* v21.97：硬编码亮色改主题变量（暗色自动切换，修复审计/用户反馈） */
+  color: var(--text-muted);
+  padding: 4px 12px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-sm);
+}
+.notes-list-container .header-right {
+  display: flex;
+  gap: 12px;
+}
+.notes-list-container .export-all-btn {
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  padding: 12px 24px;
+  background: var(--bg-primary);
+  border-color: var(--border-color);
+}
+.notes-list-container /* v21.164 视觉改版（图1 基线）：按钮统一——「新建笔记」实心主色（去渐变，
+   回归 EP type=primary 由 --el-color-primary 驱动），次要操作白底细边框，
+   四按钮高度/圆角/字重一致 */
+.create-btn {
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  padding: 12px 24px;
+  background: var(--primary-color);
+  border: none;
+}
+.notes-list-container .import-btn {
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  padding: 12px 24px;
+  background: var(--bg-primary);
+  border-color: var(--border-color);
+}
+.notes-list-container .batch-btn {
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  padding: 12px 24px;
+  background: var(--bg-primary);
+  border-color: var(--border-color);
+}
+.notes-list-container .create-btn:hover {
+  background: var(--primary-hover);
+}
+.notes-list-container .import-btn:hover, .notes-list-container .export-all-btn:hover, .notes-list-container .batch-btn:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+.notes-list-container .notes-list-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+.notes-list-container .search-box {
+  position: relative;
+  flex: 1;
+  min-width: 280px;
+}
+.notes-list-container .search-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  /* v21.82：与主页侧栏笔记列表搜索框一致，使用主题变量——
+     原硬编码 #9ca3af 在深色模式下对比失衡 */
+  color: var(--text-muted);
+  font-size: 18px;
+  z-index: 1;
+}
+.notes-list-container /* v21.82 bug 修复：深色模式下搜索框发白——原样式硬编码 #f9fafb/#e5e7eb/#2563eb，
+   不随主题切换；现与主页（NotesView）侧栏笔记列表搜索框完全一致，全部走主题变量，
+   亮色下取值与原值等价（--bg-secondary=#f9fafb、--border-color=#e5e7eb） */
+.search-input .el-input__wrapper {
+  padding-left: 44px !important;
+  border-radius: var(--radius-md);
+  box-shadow: 0 0 0 1px var(--border-color);
+  background: var(--bg-secondary);
+  transition: all 0.3s;
+}
+.notes-list-container .search-input .el-input__wrapper:hover {
+  box-shadow: 0 0 0 1px var(--primary-color);
+  background: var(--bg-primary);
+}
+.notes-list-container .search-input .el-input__wrapper.is-focus {
+  box-shadow: 0 0 0 2px var(--primary-color);
+  background: var(--bg-primary);
+}
+.notes-list-container .short-query-hint {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+  padding-left: 14px;
+}
+.notes-list-container .filter-group {
+  display: flex;
+  gap: 12px;
+}
+.notes-list-container .tag-select, .notes-list-container .sort-select {
+  width: 160px;
+}
+.notes-list-container .loading-container {
+  padding: 40px;
+  background: var(--bg-primary);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-color);
+}
+.notes-list-container /* v21.164：空态容器去重投影，改细边框分区 */
+.empty-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 400px;
+  background: var(--bg-primary);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-color);
+}
+.notes-list-container .empty-content {
+  text-align: center;
+  padding: 40px;
+}
+.notes-list-container /* 评审 B2-4：空态文字/图标改用主题变量，暗色模式随 :root 变量自动适配（亮色取值与原硬编码等价） */
+.empty-content .el-icon {
+  color: var(--text-muted);
+  margin-bottom: 24px;
+}
+.notes-list-container .empty-content h3 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 8px;
+}
+.notes-list-container .empty-content p {
+  font-size: 14px;
+  color: var(--text-muted);
+  margin: 0 0 24px;
+}
+.notes-list-container /* v20.7 批量操作 */
+.batch-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  margin-bottom: 12px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-lg);
+  flex-wrap: wrap;
+}
+.notes-list-container .batch-count {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-right: auto;
+}
+.notes-list-container .batch-hint {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-right: auto;
+}
+.notes-list-container .note-card.batch-selected, .notes-list-container .note-card.batch-selected:hover {
+  /* v21.212：批量选中改为「蓝色加粗边框」，取消圆形勾选框（原勾选框绝对定位会盖住卡片内容）。
+     1px 边框 + 1px inset 圈 = 视觉 2px，且不引起布局位移；
+     同时覆盖 :hover——触屏点按后 :hover 会「粘住」，否则最后点的那张会丢失蓝框 */
+  background: var(--bg-primary);
+  border-color: var(--primary-color);
+  box-shadow: inset 0 0 0 1px var(--primary-color);
+}
+.notes-list-container .notes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+}
+.notes-list-container /* v21.164 视觉改版（图1 基线）：卡片白底 + 细边框 + 去投影，弱化厚重感；
+   v21.207：hover 不再上浮/加阴影，改为浅蓝底 + 浅蓝边（颜色过渡）；圆角 12px */
+.note-card {
+  position: relative;
+  background: var(--bg-primary);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  border: 1px solid var(--border-color);
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s;
+  min-width: 0;
+}
+.notes-list-container .note-card:hover {
+  background: var(--primary-light);
+  border-color: var(--primary-tint);
+}
+.notes-list-container .note-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  gap: 12px;
+}
+.notes-list-container .note-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+.notes-list-container .note-actions {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.notes-list-container .note-card:hover .note-actions {
+  opacity: 1;
+}
+.notes-list-container .note-preview {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  /* v21.115：note-footer 已整体隐藏（时间栏需求），预览底部 margin 失去意义，归零避免卡片底部留白 */
+  margin-bottom: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-all;
+}
+.notes-list-container .note-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.notes-list-container .note-meta {
+  display: flex;
+  align-items: center;
+}
+.notes-list-container .note-time {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.notes-list-container .note-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.notes-list-container .pagination-container {
+  display: flex;
+  justify-content: center;
+  margin-top: 32px;
+  padding: 24px 0;
+}
+@media (max-width: 768px) {
+.notes-list-container .notes-list-container {
+    padding: 12px;
+  }
+.notes-list-container .notes-list-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    margin-bottom: 12px; /* F-8：移动端标题栏下间距统一 12px（覆盖 PC 24px） */
+  }
+.notes-list-container .header-left {
+    justify-content: space-between;
+    gap: 12px; /* F-8：统一 12px（覆盖 PC 16px） */
+    flex-wrap: nowrap; /* F-7：标题/文件夹/数量保持一行均布，不换行 */
+  }
+.notes-list-container .page-title {
+    font-size: 13px; /* F-7：与文件夹字体同大小（覆盖移动端 20px / PC 28px） */
+    font-weight: 600;
+  }
+.notes-list-container .notes-count {
+    font-size: 13px; /* F-7：与文件夹字体同大小（覆盖 PC 14px） */
+  }
+.notes-list-container .header-right {
+    width: 100%;
+    /* v21.98（用户需求）：4 个操作按钮改横向一行等宽均分
+       （替代 v21.80 的 2×2 均布——用户反馈单行更符合操作习惯，最长按钮 4 字在
+       ≥320px 屏宽下可容纳；极窄屏如有溢出再评估） */
+    flex-wrap: nowrap;
+  }
+.notes-list-container .header-right .el-button {
+    /* 等宽均分：4 按钮一行，flex-basis 0 让宽度完全由 flex 分配 */
+    flex: 1 1 0;
+    margin-left: 0;
+    /* v21.98：字号与「共 X 条笔记」统一为 13px；padding 紧凑化让文字垂直居中、
+       横向不浪费（原 PC 12px 24px 在均分布局下挤压文字空间） */
+    font-size: 13px;
+    padding: 8px 4px;
+  }
+.notes-list-container .create-btn {
+    justify-content: center;
+  }
+.notes-list-container .notes-list-toolbar {
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 12px; /* F-8：移动端工具栏下间距统一 12px（覆盖 PC 24px） */
+  }
+.notes-list-container .search-box {
+    width: 100%;
+    min-width: auto;
+  }
+.notes-list-container /* v21.98（用户需求）：搜索框文字与「共 X 条笔记」统一 13px
+     （Element Plus el-input 默认 14px，与 notes-count 13px 不一致） */
+  .search-input .el-input__inner {
+    font-size: 13px;
+  }
+.notes-list-container .filter-group {
+    width: 100%;
+    gap: 12px; /* F-8：移动端筛选组间距统一 12px（原 8px 与全局不一致） */
+  }
+.notes-list-container /* 移动端隐藏排序筛选（屏幕空间紧张，保持默认排序即可） */
+  .sort-filter {
+    display: none;
+  }
+.notes-list-container .tag-select, .notes-list-container .sort-select {
+    flex: 1;
+    width: auto;
+  }
+.notes-list-container .notes-grid {
+    grid-template-columns: 1fr;
+    /* v21.115（用户需求）：移动端卡片间距压缩 12→8px，提升单屏信息密度 */
+    gap: 8px;
+  }
+.notes-list-container .note-card {
+    /* v21.115（用户需求）：移动端条目压缩，内边距 16→12px */
+    padding: 12px;
+  }
+.notes-list-container .note-title {
+    font-size: 14px;
+  }
+.notes-list-container /* 1.0.218（用户需求）：移动端不再显示行内操作按钮（编辑/下载/删除）。
+     触屏没有 hover，点按后的粘滞 :hover 会让三个图标"常亮"，既拥挤又易误触删除；
+     功能可达性：编辑=点卡片进入；下载/删除=批量模式选择后操作。 */
+  .note-actions {
+    display: none;
+  }
+.notes-list-container /* v21.115（用户需求）：标题与内容间距压缩 12→6px（覆盖 PC 值） */
+  .note-card-header {
+    margin-bottom: 6px;
+  }
+.notes-list-container .note-preview {
+    font-size: 13px;
+    -webkit-line-clamp: 2;
+  }
+.notes-list-container .pagination-container {
+    margin-top: 12px; /* F-8：移动端分页间距统一 12px（覆盖 16px） */
+    padding: 12px 0;
+  }
+.notes-list-container .el-pagination {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+}

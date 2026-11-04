@@ -1180,6 +1180,42 @@ def main():
         except Exception as e:
             t(f"§39 零改动置顶回归异常: {e}", False)
 
+        # -------------------------------------------------------------------
+        # 40. NotesView 布局分栏门禁（2026-11-03 拆分轮新增）
+        #     回针：NotesView 拆 composable 时曾丢失 <style src="@/styles/notes-view.css">，
+        #     布局 CSS 不加载 → 列表侧栏与预览区塌陷重叠（真机用户报告）。
+        #     Vitest 不加载 CSS、原 §30 只测工具栏 → 该缺陷曾整链漏网。此处钉死分栏几何。
+        # -------------------------------------------------------------------
+        print("\n[E2E] §40 NotesView 布局分栏门禁 ...")
+        try:
+            geo = page.evaluate("""() => {
+                const c = document.querySelector('.notes-container')
+                const side = document.querySelector('.notes-sidebar')
+                const ed = document.querySelector('.notes-editor')
+                const cs = c ? getComputedStyle(c) : null
+                return {
+                    hasAll: !!(c && side && ed),
+                    display: cs ? cs.display : null,
+                    side: side ? side.getBoundingClientRect().toJSON() : null,
+                    editor: ed ? ed.getBoundingClientRect().toJSON() : null,
+                    vw: window.innerWidth
+                }
+            }""")
+            t("§40 分栏三容器齐全", geo["hasAll"])
+            t("§40 .notes-container 为 flex 布局（布局 CSS 已加载）",
+              geo["display"] == "flex", geo["display"])
+            if geo["side"] and geo["editor"]:
+                s, e = geo["side"], geo["editor"]
+                t("§40 侧栏与编辑区左右并排（编辑区起点不早于侧栏右缘）",
+                  e["x"] + 1 >= s["x"] + s["width"], f"sidebar_right={s['x']+s['width']:.0f} editor_left={e['x']:.0f}")
+                t("§40 两区均可见且不重叠（宽度 > 0、同屏）",
+                  s["width"] > 0 and e["width"] > 0 and s["x"] + s["width"] <= e["x"] + 1,
+                  f"side_w={s['width']:.0f} editor_w={e['width']:.0f}")
+                t("§40 编辑区占据右侧主体宽度（≥ 视口 40%）",
+                  e["width"] >= geo["vw"] * 0.4, f"editor_w={e['width']:.0f} vw={geo['vw']}")
+        except Exception as ex:
+            t(f"§40 布局分栏门禁异常: {ex}", False)
+
         page.close()
         browser.close()
 
