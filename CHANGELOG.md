@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.6.1
+
+- Upgrade/restart hardening: `stop` now sweeps every leftover process by the app binary path (not just the pidfile PID), waits for exit and removes a stale `app.sock`; `start` clears the socket first and fails closed if the port is already served by an untracked instance.
+- VM upgrade harness now asserts exactly one instance, socket presence, Unix/TCP health, gateway API 200 and no "Bad Gateway" response.
+- CI: multi-arch Docker builds use `$BUILDPLATFORM` + `TARGETARCH` cross-compilation instead of QEMU rebuilding npm/vite/Go for arm64.
+- No schema changes, no new dependencies.
+
 ## 2.6.0
 
 - Share links for non-encrypted notes: create a read-only public link from the note menu with a 1 / 7 / 30-day expiry.

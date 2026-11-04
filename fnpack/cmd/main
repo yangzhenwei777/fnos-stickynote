@@ -68,6 +68,14 @@ start_process() {
         return 0
     fi
 
+    # v2.6.1：清理上次异常退出留下的 socket；若端口已被未登记实例占用则 fail-closed，
+    # 避免 supervisor 在端口冲突下反复拉起又退出（2.6.0 VM 实测的 Bad Gateway 根因）。
+    rm -f "${TRIM_APPDEST}/app.sock" 2>/dev/null || true
+    if curl -fsS --max-time 2 "http://127.0.0.1:${wizard_app_port}/api/health" >/dev/null 2>&1; then
+        log_msg "ERROR: port ${wizard_app_port} already served by an untracked instance; refuse to start"
+        return 1
+    fi
+
     log_msg "Starting supervisor ..."
     # info.log 大小轮转（v18）：超 10MB 改名 .1，只保留最近 2 份，
     # 防 7x24 长跑把 NAS 存储撑满（Go 侧业务日志已按天轮转+30 天自清，此处针对进程 stdout 兜底）
@@ -146,6 +154,9 @@ stop_process() {
         fi
     fi
 
+    # v2.6.1：pidfile 分支之后再做一次路径级兜底清扫，并删除 stale socket。
+    sweep_untracked
+
     return 0
 }
 
@@ -165,6 +176,45 @@ check_process() {
         fi
     fi
     return 0  # 进程存在（无身份要求或 /proc 不可用）
+}
+
+# v2.6.1：清扫 pidfile 之外的残留实例（手工启动 / 旧 supervisor 子进程），
+# 只匹配本应用二进制路径，避免误杀；结束后删除 stale socket。
+sweep_untracked() {
+    local expected="${TRIM_APPDEST}/server/sticky-note"
+    local pids
+    pids=$(pgrep -f "${expected}" 2>/dev/null || true)
+    [ -z "${pids}" ] && return 0
+
+    log_msg "sweep untracked sticky-note pids: $(echo ${pids} | tr '\n' ' ')"
+    local p
+    for p in ${pids}; do
+        if check_process "${p}" "${expected}"; then
+            kill -TERM "${p}" 2>/dev/null || true
+        fi
+    done
+
+    local i=0 remaining
+    while [ ${i} -lt 10 ]; do
+        remaining=0
+        for p in ${pids}; do
+            if check_process "${p}" "${expected}"; then
+                remaining=1
+                break
+            fi
+        done
+        [ ${remaining} -eq 0 ] && break
+        sleep 1
+        i=$((i + 1))
+    done
+    for p in ${pids}; do
+        if check_process "${p}" "${expected}"; then
+            log_msg "send KILL to remaining PID:${p}"
+            kill -KILL "${p}" 2>/dev/null || true
+        fi
+    done
+    rm -f "${TRIM_APPDEST}/app.sock" 2>/dev/null || true
+    return 0
 }
 
 status() {

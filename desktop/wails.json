@@ -12,7 +12,7 @@
   "info": {
     "companyName": "Sticky note",
     "productName": "Sticky note Desktop",
-    "productVersion": "2.6.0",
+    "productVersion": "2.6.1",
     "copyright": "Copyright 2026 Davy",
     "comments": "P0-A 骨架验证壳：LocalTransport/真实前端接线在后续切片（离线方案 v20-Project）"
   }
