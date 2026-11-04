@@ -1,5 +1,5 @@
 appname               = stickynote
-version               = 2.3.3
+version               = 2.4.0
 display_name          = Sticky note
 platform              = x86
 # checksum 字段由 fnpack build 自动计算注入，请勿手动填写
@@ -11,6 +11,7 @@ desktop_uidir         = ui
 desktop_applaunchname = stickynote.Application
 desc                  = Sticky note 便签应用
 changelog             = """
+2.4.0 — 优化批：搜索语法 + 斜杠命令 + 阅读大纲：q 支持 tag:/folder:/sort:/since:/until: 白名单语法（未识别/非法 token 回退普通关键词）；编辑器段首 / 唤起插入菜单；阅读态 ≥2 标题显示右侧大纲。零 schema、零新增依赖。
 2.3.3 — 巨型 Vue 拆分（技术债清账）：六个超 800 行软上限的组件全部拆分至限内（列表/编辑器/工作区/设置/侧栏/桌面账号卡片），逻辑抽 composables、页签子组件化、样式外置；UI 与行为零变化（模板/样式与 2.3.2 基线逐字节比对）；fnpack 图标全槽位（icon_0/64/128/256/512，512 根图标）+ 产物级校验加固（ELF 架构/单一二进制/CRLF/图标四角透明）。零 schema、零新增依赖。
 2.3.2 — 编辑→预览零改动误置顶修复：Tiptap 规范化 HTML 曾被误判为用户编辑，导致自动保存并置顶；修复为「编辑器回流基线取规范化结果 + 保存层 title/content/tags no-op 守卫」。桌面/Web 共用同一修复；零 schema、零新增依赖。
 2.3.1 — 双端契约一致性修复：桌面端与网页端 API 契约对齐——【导出全部】提示补「N 条加密文件夹中的笔记」；桌面保存后列表按更新时间重排恢复；锁定文件夹删除/移动返回 423 并给中文「先解锁」引导；恢复笔记补 folder_locked；移动笔记补 version；桌面 public-config 补回收站保留天数默认值。零 schema、零新增依赖。

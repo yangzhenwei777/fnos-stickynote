@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.4.0
+
+- Search syntax: `q` now accepts `tag:`, `folder:` (quote names containing spaces), `sort:updated|created|title`, `since:YYYY-MM-DD` and `until:YYYY-MM-DD`. Unrecognized or invalid tokens fall back to plain keywords. All values are parameterized.
+- Editor: typing `/` at the start of a paragraph opens an insert menu (headings 1–3, bullet/ordered/task lists, quote, code block, table, divider) with keyword filtering, arrow-key navigation, Enter to run and Esc to close.
+- Reading view: notes with two or more headings (h1–h3) show a sticky outline on the right; click to jump. Hidden on narrow screens and mobile.
+- No schema changes, no new dependencies.
+
 ## 2.3.3
 
 - Refactor: the six oversized Vue components (note list, editor toolbar, note workspace, profile, sidebar, desktop account card) are now all under the 800-line soft limit. Logic moved into composables; profile tabs became child components; list/profile styles moved to shared prefixed CSS. Zero UI or behavior change (templates/styles byte-compared against the 2.3.2 baseline).
