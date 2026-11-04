@@ -126,6 +126,8 @@ func columnExists(table, column string) (bool, error) {
 		"sync_meta": true, "sync_changes": true, "sync_operations": true,
 		// 批次5 P5 Bootstrap 快照表（与 ensureSyncSnapshotTables DDL 同步登记）
 		"sync_snapshots": true, "sync_snapshots_hold": true,
+		// 2.5.0 版本历史表（与 ensureSchema/老库补丁 DDL 同步登记）
+		"note_history": true,
 	}
 	if !allowedTables[table] {
 		return false, fmt.Errorf("invalid table for PRAGMA: %q", table)

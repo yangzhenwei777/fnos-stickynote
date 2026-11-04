@@ -169,6 +169,36 @@ func StartServer(port int, dataDir, webDir, uploadDir, shareDirs, socketPath str
 	// v21.67 P1-03：删除用户残留文件兜底重试。
 	database.CleanPendingUploads(uploadPath)
 
+	// 2.5.0 版本历史：每 10 分钟自动快照有变更的笔记；每 24h 按份数/天数/空间上限清理。
+	go func() {
+		maxPerNote, maxAgeDays, maxTotalBytes := model.HistoryConfigFromEnv()
+		if n, err := model.CleanupNoteHistory(maxPerNote, maxAgeDays, maxTotalBytes); err != nil {
+			logger.Error("CleanupNoteHistory (startup): %v", err)
+		} else if n > 0 {
+			logger.Info("CleanupNoteHistory (startup): removed %d", n)
+		}
+		snapTicker := time.NewTicker(10 * time.Minute)
+		defer snapTicker.Stop()
+		cleanTicker := time.NewTicker(24 * time.Hour)
+		defer cleanTicker.Stop()
+		for {
+			select {
+			case <-snapTicker.C:
+				if n, err := model.SnapshotRecentNotes(200); err != nil {
+					logger.Error("SnapshotRecentNotes: %v", err)
+				} else if n > 0 {
+					logger.Info("SnapshotRecentNotes: %d snapshots", n)
+				}
+			case <-cleanTicker.C:
+				if n, err := model.CleanupNoteHistory(maxPerNote, maxAgeDays, maxTotalBytes); err != nil {
+					logger.Error("CleanupNoteHistory: %v", err)
+				} else if n > 0 {
+					logger.Info("CleanupNoteHistory: removed %d", n)
+				}
+			}
+		}
+	}()
+
 	// P2-4 定时扫描：每 6 小时重跑一次清理，不再只依赖启动时一次性执行。
 	// trash_retention_days=0（默认）时 CleanExpiredTrash 内部直接返回，零开销。
 	// v21.97（审计 P-03 整改）：启动时先执行一次清理，避免「首次 6 小时」窗口内

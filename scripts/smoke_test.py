@@ -2024,6 +2024,35 @@ def main():
         # socket 文件产生 + 残留自愈。socket→handler 全链由 Go 单测 TestSocketHTTPRoundTrip
         # 钉死；本节钉「双监听并存不互相破坏 + 启动/退出 socket 文件生命周期」。
         # ------------------------------------------------------------------
+        print("== 33. 版本历史（2.5.0；操作快照/详情/恢复/加密边界）==")
+        s, j, _, _ = req("POST", "/api/notes", {"title": "历史测试", "content": "<p>v1</p>"}, cookies=sca)
+        hist_nid = (j or {}).get("id")
+        check("33.1 创建历史测试笔记", s in (200, 201) and bool(hist_nid), f"status={s}")
+        s, j, _, _ = req("PUT", f"/api/notes/{hist_nid}", {"title": "历史测试", "content": "<p>v2</p>", "tags": "", "version": 1}, cookies=sca)
+        check("33.2 第一次更新（v1→v2，快照 v1）", s == 200, f"status={s} {j}")
+        s, j, _, _ = req("PUT", f"/api/notes/{hist_nid}", {"title": "历史测试", "content": "<p>v3</p>", "tags": "", "version": 2}, cookies=sca)
+        check("33.3 第二次更新（v2→v3，快照 v2）", s == 200, f"status={s} {j}")
+        s, j, _, _ = req("GET", f"/api/notes/{hist_nid}/history", cookies=sca)
+        hist_items = (j or {}).get("history", [])
+        check("33.4 历史列表两条（v1/v2）", s == 200 and (j or {}).get("total") == 2 and len(hist_items) == 2, f"status={s} {j}")
+        hist_first = hist_items[0] if hist_items else {}
+        s, j, _, _ = req("GET", f"/api/notes/{hist_nid}/history/{hist_first.get('id')}", cookies=sca)
+        check("33.5 历史详情含内容 v2", s == 200 and "<p>v2</p>" in ((j or {}).get("content") or ""), f"status={s} {j}")
+        s, j, _, _ = req("POST", f"/api/notes/{hist_nid}/history/{hist_first.get('id')}/restore", {"version": 3}, cookies=sca)
+        check("33.6 恢复历史版本 → version 4", s == 200 and (j or {}).get("version") == 4, f"status={s} {j}")
+        s, j, _, _ = req("GET", f"/api/notes/{hist_nid}", cookies=sca)
+        check("33.7 恢复后正文为 v2", s == 200 and "<p>v2</p>" in ((j or {}).get("content") or ""), f"status={s} {j}")
+        s, j, _, _ = req("GET", f"/api/notes/{hist_nid}/history", cookies=sca)
+        check("33.8 恢复前状态已入历史（共三条，可再撤销）", s == 200 and (j or {}).get("total") == 3, f"status={s} {j}")
+        # 加密边界
+        s, j, _, _ = req("POST", "/api/notes", {"title": "历史加密", "content": "<p>secret</p>"}, cookies=sca)
+        enc_hist_nid = (j or {}).get("id")
+        req("PUT", f"/api/notes/{enc_hist_nid}/encrypt", {"password": "histpw123", "confirm_password": "histpw123"}, cookies=sca)
+        s, j, _, _ = req("GET", f"/api/notes/{enc_hist_nid}/history", cookies=sca)
+        check("33.10 加密笔记历史为空且 encrypted=true", s == 200 and (j or {}).get("encrypted") is True and (j or {}).get("total") == 0, f"status={s} {j}")
+        req("DELETE", f"/api/notes/{hist_nid}", cookies=sca)
+        req("DELETE", f"/api/notes/{enc_hist_nid}", cookies=sca)
+
         print("== 35. 统一网关模式双监听（v2.2.0）==")
         sock_path = os.path.join(data_dir, "gw.sock")
         dd35 = tempfile.mkdtemp(prefix="sticky-note-smoke-gw-")

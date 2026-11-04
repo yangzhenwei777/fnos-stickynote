@@ -156,6 +156,18 @@ function scrollToOutlineHeading(index) {
 const viewContentRef = ref(null)
 const notePreviewContentRef = ref(null)
 
+// ---- 2.5.0 版本历史 ----
+const historyDialogVisible = ref(false)
+
+function onHistoryRestored(note) {
+  if (!note || !currentNote.value) return
+  currentNote.value = { ...currentNote.value, ...note }
+  applySavedToLists(note.id, note.title, note.content, note.tags, note.version, note.updated_at)
+  resetBaseline()
+  isDirty.value = false
+  clearSaveState()
+}
+
 function attachPreviewCodeCopy() {
   nextTick(() => {
     attachCodeCopyButtons(viewContentRef.value)
@@ -296,6 +308,7 @@ function handleViewAction(cmd) {
   if (cmd === 'encrypt') showEncryptDialog()
   else if (cmd === 'decrypt') showPasswordDialog('decrypt')
   else if (cmd === 'move' || cmd === 'copy') openFolderPicker(cmd)
+  else if (cmd === 'history') historyDialogVisible.value = true
   else if (cmd === 'delete') confirmRemoveNote()
   else if (cmd === 'download') {
     // 加密且未解锁时，下载前需先验证密码（与旧版行为一致）
@@ -644,6 +657,7 @@ watch(() => currentNote.value?.id, () => {
     syncBaselineContent, resetBaseline, handleKeydown, handleBeforeUnload, cleanupTimers,
     fileInput, sanitizedContent, previewSanitizedContent,
     noteOutline, scrollToOutlineHeading,
+    historyDialogVisible, onHistoryRestored,
     viewContentRef, notePreviewContentRef, noteHighlight,
     createNewNote, handleImportFile, selectNote, enterEditMode, togglePreview, quickEditNote,
     removeNote, handleViewAction, exportNoteAsImage,

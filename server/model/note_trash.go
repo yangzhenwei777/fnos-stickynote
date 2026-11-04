@@ -92,7 +92,12 @@ func GetTrashStats(userID int64) (count int, uploadBytes int64, err error) {
 
 // PermanentDeleteNote 彻底删除（仅限回收站中的笔记，物理删除不可恢复）。
 func PermanentDeleteNote(id, userID int64) error {
-	res, err := database.DB.Exec(
+	tx, err := database.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	res, err := tx.Exec(
 		"DELETE FROM notes WHERE id = ? AND user_id = ? AND deleted_at IS NOT NULL",
 		id, userID,
 	)
@@ -103,7 +108,10 @@ func PermanentDeleteNote(id, userID int64) error {
 	if affected == 0 {
 		return sql.ErrNoRows
 	}
-	return nil
+	if _, err := tx.Exec("DELETE FROM note_history WHERE note_id = ? AND user_id = ?", id, userID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // EmptyTrashNotes 清空当前用户回收站中的所有笔记（永久删除）。
@@ -143,6 +151,14 @@ func EmptyTrashNotes(userID int64) ([]Note, []string, error) {
 	tx, err := database.DB.Begin()
 	if err != nil {
 		return notes, uploadNames, fmt.Errorf("begin empty-trash tx: %w", err)
+	}
+	if _, err := tx.Exec(
+		"DELETE FROM note_history WHERE user_id = ? AND note_id IN (SELECT id FROM notes WHERE user_id = ? AND deleted_at IS NOT NULL)",
+		userID, userID,
+	); err != nil {
+		_ = tx.Rollback()
+		logger.Error("EmptyTrashNotes: history delete failed: %v", err)
+		return notes, uploadNames, err
 	}
 	if _, err := tx.Exec(
 		"DELETE FROM notes WHERE user_id = ? AND deleted_at IS NOT NULL",

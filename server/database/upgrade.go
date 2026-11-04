@@ -147,6 +147,21 @@ func upgrade_v1_0_0(tx *sql.Tx) error {
 		`CREATE INDEX IF NOT EXISTS idx_note_folders_user_id ON note_folders(user_id)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_note_folders_user_name ON note_folders(user_id, name)`,
 		`CREATE INDEX IF NOT EXISTS idx_note_folders_user_locked ON note_folders(user_id, is_encrypted)`,
+		// 2.5.0 版本历史：非加密笔记的快照（操作历史 + 自动快照，hash 去重）
+		`CREATE TABLE IF NOT EXISTS note_history (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			note_id INTEGER NOT NULL,
+			user_id INTEGER NOT NULL,
+			title TEXT NOT NULL DEFAULT '',
+			content TEXT NOT NULL DEFAULT '',
+			tags TEXT NOT NULL DEFAULT '',
+			content_hash TEXT NOT NULL,
+			size_bytes INTEGER NOT NULL DEFAULT 0,
+			source TEXT NOT NULL DEFAULT 'user',
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_note_history_note ON note_history(note_id, created_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_note_history_user ON note_history(user_id)`,
 		`CREATE TABLE IF NOT EXISTS configs (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			key TEXT NOT NULL UNIQUE,
@@ -440,6 +455,33 @@ func ensureSchema() error {
 	}
 	if _, err := DB.Exec("CREATE INDEX IF NOT EXISTS idx_note_folders_user_locked ON note_folders(user_id, is_encrypted)"); err != nil {
 		return fmt.Errorf("failed to create note_folders lock index: %w", err)
+	}
+
+	// 2.5.0 版本历史（老库幂等补丁，与 ensureSchema DDL 双路同步）：note_history 表 + 索引
+	if has, err := tableExists("note_history"); err != nil {
+		return err
+	} else if !has {
+		if _, err := DB.Exec(`CREATE TABLE IF NOT EXISTS note_history (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			note_id INTEGER NOT NULL,
+			user_id INTEGER NOT NULL,
+			title TEXT NOT NULL DEFAULT '',
+			content TEXT NOT NULL DEFAULT '',
+			tags TEXT NOT NULL DEFAULT '',
+			content_hash TEXT NOT NULL,
+			size_bytes INTEGER NOT NULL DEFAULT 0,
+			source TEXT NOT NULL DEFAULT 'user',
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`); err != nil {
+			return fmt.Errorf("failed to create note_history table: %w", err)
+		}
+		logger.Info("Schema patched: note_history table created")
+	}
+	if _, err := DB.Exec("CREATE INDEX IF NOT EXISTS idx_note_history_note ON note_history(note_id, created_at DESC)"); err != nil {
+		return fmt.Errorf("failed to create note_history note index: %w", err)
+	}
+	if _, err := DB.Exec("CREATE INDEX IF NOT EXISTS idx_note_history_user ON note_history(user_id)"); err != nil {
+		return fmt.Errorf("failed to create note_history user index: %w", err)
 	}
 
 	// ② notes.folder_id 列：NULL = 默认"我的笔记"（老笔记自动归入默认，无需回填）

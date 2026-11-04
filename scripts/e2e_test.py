@@ -1274,6 +1274,43 @@ def main():
         except Exception as ex:
             t(f"§41.4 阅读态大纲异常: {ex}", False)
 
+        # -------------------------------------------------------------------
+        # §42 2.5.0 版本历史：列表 / 预览 / 恢复
+        # -------------------------------------------------------------------
+        print("\n[E2E] §42 版本历史 ...")
+        try:
+            r = page.request.post(f"{http_base}/api/notes",
+                                  data={"title": "§42 历史版本", "content": "<p>hist-v1</p>"})
+            hist_nid = r.json().get("id") if r.ok else None
+            page.request.put(f"{http_base}/api/notes/{hist_nid}",
+                             data={"title": "§42 历史版本", "content": "<p>hist-v2</p>", "tags": "", "version": 1})
+            page.request.put(f"{http_base}/api/notes/{hist_nid}",
+                             data={"title": "§42 历史版本", "content": "<p>hist-v3</p>", "tags": "", "version": 2})
+            page.goto(f"{http_base}/", wait_until="networkidle")
+            wait(500)
+            page.locator('.note-item', has_text="§42 历史版本").first.click()
+            wait(500)
+            page.click('.more-btn')
+            page.click('.el-dropdown-menu__item:has-text("历史版本")')
+            page.wait_for_selector('.history-layout')
+            page.locator('.history-item').nth(1).wait_for(state='visible')
+            items = page.locator('.history-item')
+            t("§42.1 历史弹窗列出两条记录", items.count() == 2, f"count={items.count()}")
+            items.first.click()
+            page.locator('.history-preview-content', has_text='hist-v2').wait_for(state='visible')
+            preview = page.locator('.history-preview-content').inner_text()
+            t("§42.2 历史预览为 v2 内容", "hist-v2" in preview, preview[:60])
+            page.click('button:has-text("恢复此版本")')
+            wait(300)
+            page.click('.el-message-box__btns button:has-text("恢复")')
+            page.locator('.view-content', has_text='hist-v2').wait_for(state='visible')
+            view = page.locator('.view-content').inner_text()
+            t("§42.3 恢复后正文为 v2", "hist-v2" in view, view[:60])
+            page.locator('.history-layout').wait_for(state='hidden')
+            t("§42.4 恢复后弹窗关闭", True)
+        except Exception as ex:
+            t(f"§42 版本历史异常: {ex}", False)
+
         page.close()
         browser.close()
 

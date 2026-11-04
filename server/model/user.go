@@ -294,8 +294,18 @@ func AdminResetPassword(id int64, password string) error {
 }
 
 func DeleteUser(id int64) error {
-	_, err := database.DB.Exec("DELETE FROM users WHERE id = ?", id)
-	return err
+	tx, err := database.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec("DELETE FROM note_history WHERE user_id = ?", id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec("DELETE FROM users WHERE id = ?", id); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // RegisterUser 单语句原子注册（v19.5 A/B 优化）：角色判定与 INSERT 合为一条 SQL，

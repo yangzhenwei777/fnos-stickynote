@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.5.0
+
+- Version history for non-encrypted notes: the previous state is captured before every save, and a background job adds an automatic snapshot every 10 minutes for changed notes (content-hash deduped).
+- Note menu → Version history: list (time / source / size), read-only preview, one-click restore. Restoring first snapshots the current state, so the restore itself can be undone.
+- Retention defaults: 50 versions / 180 days / 2 GB (`HISTORY_MAX_PER_NOTE`, `HISTORY_RETENTION_DAYS`, `HISTORY_MAX_TOTAL_MB`). Cleanup runs in a single transaction and rolls back on any failure.
+- History is removed with permanent note deletion, garbage collection of the trash, and user deletion.
+- Boundary: encrypted notes are excluded in this version; history is server-side only (desktop shows a hint to view it in the web app). No new dependencies.
+
 ## 2.4.0
 
 - Search syntax: `q` now accepts `tag:`, `folder:` (quote names containing spaces), `sort:updated|created|title`, `since:YYYY-MM-DD` and `until:YYYY-MM-DD`. Unrecognized or invalid tokens fall back to plain keywords. All values are parameterized.

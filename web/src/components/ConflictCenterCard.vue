@@ -233,6 +233,9 @@ defineExpose({ loadAll })
     <p class="cc-desc">
       离线期间本机改动与服务器上的新版本相撞时，会在这里列出并交给你决定，<strong>不会自动覆盖任何一方的内容</strong>。
     </p>
+    <p class="cc-history-hint">
+      需要对比或找回更早的内容？请在网页版打开该笔记，在【更多 → 历史版本】中查看与恢复。
+    </p>
     <div class="cc-head">
       <span class="cc-summary">{{ summaryLine }}</span>
       <div class="cc-head-actions">
@@ -455,6 +458,11 @@ defineExpose({ loadAll })
   color: var(--text-muted);
   line-height: 1.7;
   margin: 8px 0 16px;
+}
+.cc-history-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: -8px 0 16px;
 }
 .cc-head {
   display: flex;

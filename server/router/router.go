@@ -131,6 +131,10 @@ func Setup(uploadDir string, webDir string) http.Handler {
 		auth.GET("/notes/tags", handler.GetAllTags)
 		auth.GET("/notes/:id", handler.GetNote)
 		auth.DELETE("/notes/:id", handler.DeleteNote)
+		// 2.5.0 版本历史（非加密笔记）
+		auth.GET("/notes/:id/history", handler.ListNoteHistory)
+		auth.GET("/notes/:id/history/:history_id", handler.GetNoteHistory)
+		auth.POST("/notes/:id/history/:history_id/restore", handler.RestoreNoteHistory)
 		// v21.86 文件夹：默认"我的笔记"为虚拟项（folder_id IS NULL），自定义文件夹 CRUD
 		auth.GET("/folders", handler.ListFolders)
 		auth.POST("/folders", handler.CreateFolder)

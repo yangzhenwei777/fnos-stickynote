@@ -147,6 +147,10 @@ func (s *NoteService) UpdateNote(id, userID int64, title, content, tags string, 
 		}
 		return model.GetNote(id, userID)
 	}
+	// 2.5.0 版本历史：更新前保存当前状态（同一事务；失败即回滚，历史与正文同生共死）
+	if _, err := model.CaptureNoteHistoryTx(tx, id, userID, model.HistorySourceUser); err != nil {
+		return nil, err
+	}
 	newVersion, err := model.UpdateNoteTx(tx, id, userID, title, content, tags, baseVersion)
 	if err != nil {
 		return nil, err
@@ -160,6 +164,37 @@ func (s *NoteService) UpdateNote(id, userID int64, title, content, tags string, 
 		return nil, err
 	}
 	return model.GetNote(id, userID)
+}
+
+// RestoreNoteHistory 将历史版本恢复为当前内容：恢复前先快照当前状态（可再撤销），
+// 再走 CAS 更新与 UPDATE 事件同提交。
+func (s *NoteService) RestoreNoteHistory(noteID, historyID, userID, baseVersion int64) (*model.Note, error) {
+	tx, err := database.DB.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	h, err := model.GetNoteHistoryTx(tx, userID, noteID, historyID)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := model.CaptureNoteHistoryTx(tx, noteID, userID, model.HistorySourceUser); err != nil {
+		return nil, err
+	}
+	newVersion, err := model.UpdateNoteTx(tx, noteID, userID, h.Title, h.Content, h.Tags, baseVersion)
+	if err != nil {
+		return nil, err
+	}
+	if s.serverEvents {
+		if err := emitNoteChange(tx, userID, noteID, "UPDATE", newVersion); err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return model.GetNote(noteID, userID)
 }
 
 func (s *NoteService) GetNote(id, userID int64) (*model.Note, error) {
