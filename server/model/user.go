@@ -302,6 +302,9 @@ func DeleteUser(id int64) error {
 	if _, err := tx.Exec("DELETE FROM note_history WHERE user_id = ?", id); err != nil {
 		return err
 	}
+	if _, err := tx.Exec("DELETE FROM note_shares WHERE user_id = ?", id); err != nil {
+		return err
+	}
 	if _, err := tx.Exec("DELETE FROM users WHERE id = ?", id); err != nil {
 		return err
 	}

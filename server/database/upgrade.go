@@ -162,6 +162,20 @@ func upgrade_v1_0_0(tx *sql.Tx) error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_note_history_note ON note_history(note_id, created_at DESC)`,
 		`CREATE INDEX IF NOT EXISTS idx_note_history_user ON note_history(user_id)`,
+		// 2.6.0 分享链接：只存 token 哈希，明文 token 仅创建时返回一次
+		`CREATE TABLE IF NOT EXISTS note_shares (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			note_id INTEGER NOT NULL,
+			user_id INTEGER NOT NULL,
+			token_hash TEXT NOT NULL UNIQUE,
+			expires_at DATETIME NOT NULL,
+			revoked_at DATETIME DEFAULT NULL,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			last_access_at DATETIME DEFAULT NULL,
+			access_count INTEGER NOT NULL DEFAULT 0
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_note_shares_note ON note_shares(note_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_note_shares_user ON note_shares(user_id)`,
 		`CREATE TABLE IF NOT EXISTS configs (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			key TEXT NOT NULL UNIQUE,
@@ -193,7 +207,8 @@ func upgrade_v1_0_0(tx *sql.Tx) error {
 			('cors_origins', '', 'CORS 跨域白名单（逗号分隔；* 全放行；空=仅同源）'),
 			('max_storage_mb_per_user', '1024', '每用户上传存储总配额（MB，0=不限）'),
 			('max_note_content_kb', '0', '用户每条笔记的大小上限（KB），超出将无法保存。0=不限制'),
-			('trash_retention_days', '0', '回收站自动清理天数（0=永久保留，P2-6）')`,
+			('trash_retention_days', '0', '回收站自动清理天数（0=永久保留，P2-6）'),
+			('share_enabled', 'true', '允许创建分享链接（公开只读；2.6.0）')`,
 	}
 
 	for _, q := range queries {
@@ -482,6 +497,32 @@ func ensureSchema() error {
 	}
 	if _, err := DB.Exec("CREATE INDEX IF NOT EXISTS idx_note_history_user ON note_history(user_id)"); err != nil {
 		return fmt.Errorf("failed to create note_history user index: %w", err)
+	}
+
+	// 2.6.0 分享链接（老库幂等补丁，与 ensureSchema DDL 双路同步）：note_shares 表 + 索引
+	if has, err := tableExists("note_shares"); err != nil {
+		return err
+	} else if !has {
+		if _, err := DB.Exec(`CREATE TABLE IF NOT EXISTS note_shares (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			note_id INTEGER NOT NULL,
+			user_id INTEGER NOT NULL,
+			token_hash TEXT NOT NULL UNIQUE,
+			expires_at DATETIME NOT NULL,
+			revoked_at DATETIME DEFAULT NULL,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			last_access_at DATETIME DEFAULT NULL,
+			access_count INTEGER NOT NULL DEFAULT 0
+		)`); err != nil {
+			return fmt.Errorf("failed to create note_shares table: %w", err)
+		}
+		logger.Info("Schema patched: note_shares table created")
+	}
+	if _, err := DB.Exec("CREATE INDEX IF NOT EXISTS idx_note_shares_note ON note_shares(note_id)"); err != nil {
+		return fmt.Errorf("failed to create note_shares note index: %w", err)
+	}
+	if _, err := DB.Exec("CREATE INDEX IF NOT EXISTS idx_note_shares_user ON note_shares(user_id)"); err != nil {
+		return fmt.Errorf("failed to create note_shares user index: %w", err)
 	}
 
 	// ② notes.folder_id 列：NULL = 默认"我的笔记"（老笔记自动归入默认，无需回填）

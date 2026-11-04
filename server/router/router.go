@@ -102,6 +102,8 @@ func Setup(uploadDir string, webDir string) http.Handler {
 		apiPublic.GET("/public-config", handler.GetPublicConfig)
 		apiPublic.GET("/health", handler.Health)
 		apiPublic.POST("/auth/verify-totp", handler.VerifyTOTP) // v20.2 TOTP 登录第二步
+		// 2.6.0 分享链接公开只读端点（凭 token，无登录；全局限流已覆盖）
+		apiPublic.GET("/share/:token", handler.GetSharedNote)
 
 		// Authenticated（16MB 小接口组）
 		auth := apiPublic.Group("", middleware.RequireAuth())
@@ -135,6 +137,10 @@ func Setup(uploadDir string, webDir string) http.Handler {
 		auth.GET("/notes/:id/history", handler.ListNoteHistory)
 		auth.GET("/notes/:id/history/:history_id", handler.GetNoteHistory)
 		auth.POST("/notes/:id/history/:history_id/restore", handler.RestoreNoteHistory)
+		// 2.6.0 分享链接（非加密笔记；公开访问走 /api/share/:token）
+		auth.POST("/notes/:id/share", handler.CreateNoteShare)
+		auth.GET("/notes/:id/shares", handler.ListNoteShares)
+		auth.DELETE("/notes/:id/shares/:share_id", handler.RevokeNoteShare)
 		// v21.86 文件夹：默认"我的笔记"为虚拟项（folder_id IS NULL），自定义文件夹 CRUD
 		auth.GET("/folders", handler.ListFolders)
 		auth.POST("/folders", handler.CreateFolder)

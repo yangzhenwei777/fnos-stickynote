@@ -158,6 +158,8 @@ const notePreviewContentRef = ref(null)
 
 // ---- 2.5.0 版本历史 ----
 const historyDialogVisible = ref(false)
+// ---- 2.6.0 分享链接 ----
+const shareDialogVisible = ref(false)
 
 function onHistoryRestored(note) {
   if (!note || !currentNote.value) return
@@ -309,6 +311,7 @@ function handleViewAction(cmd) {
   else if (cmd === 'decrypt') showPasswordDialog('decrypt')
   else if (cmd === 'move' || cmd === 'copy') openFolderPicker(cmd)
   else if (cmd === 'history') historyDialogVisible.value = true
+  else if (cmd === 'share') shareDialogVisible.value = true
   else if (cmd === 'delete') confirmRemoveNote()
   else if (cmd === 'download') {
     // 加密且未解锁时，下载前需先验证密码（与旧版行为一致）
@@ -658,6 +661,7 @@ watch(() => currentNote.value?.id, () => {
     fileInput, sanitizedContent, previewSanitizedContent,
     noteOutline, scrollToOutlineHeading,
     historyDialogVisible, onHistoryRestored,
+    shareDialogVisible,
     viewContentRef, notePreviewContentRef, noteHighlight,
     createNewNote, handleImportFile, selectNote, enterEditMode, togglePreview, quickEditNote,
     removeNote, handleViewAction, exportNoteAsImage,

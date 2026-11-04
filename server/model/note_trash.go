@@ -111,6 +111,9 @@ func PermanentDeleteNote(id, userID int64) error {
 	if _, err := tx.Exec("DELETE FROM note_history WHERE note_id = ? AND user_id = ?", id, userID); err != nil {
 		return err
 	}
+	if _, err := tx.Exec("DELETE FROM note_shares WHERE note_id = ? AND user_id = ?", id, userID); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 
@@ -158,6 +161,14 @@ func EmptyTrashNotes(userID int64) ([]Note, []string, error) {
 	); err != nil {
 		_ = tx.Rollback()
 		logger.Error("EmptyTrashNotes: history delete failed: %v", err)
+		return notes, uploadNames, err
+	}
+	if _, err := tx.Exec(
+		"DELETE FROM note_shares WHERE user_id = ? AND note_id IN (SELECT id FROM notes WHERE user_id = ? AND deleted_at IS NOT NULL)",
+		userID, userID,
+	); err != nil {
+		_ = tx.Rollback()
+		logger.Error("EmptyTrashNotes: share delete failed: %v", err)
 		return notes, uploadNames, err
 	}
 	if _, err := tx.Exec(

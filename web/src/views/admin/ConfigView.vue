@@ -90,7 +90,7 @@
         </el-form-item>
         <el-form-item label="值">
           <el-select
-            v-if="editingConfig.key === 'allow_register'"
+            v-if="editingConfig.key === 'allow_register' || editingConfig.key === 'share_enabled'"
             v-model="editValue"
           >
             <el-option

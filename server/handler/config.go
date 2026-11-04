@@ -76,6 +76,7 @@ func isConfigKeyAllowed(key string) bool {
 		"max_note_content_kb":     true,
 		"trash_retention_days":    true,
 		"allow_register":          true, // 注册开关（v20.8 曾误写 register_enabled 幽灵键导致开关失效）
+		"share_enabled":           true, // 2.6.0 分享链接总开关（true/false，默认 true）
 		"site_title":              true, // F-6（v1.0.134 审计）：应用标题；本就是 /public-config 下发的展示型配置，无敏感面
 	}
 	return allowed[key]
@@ -108,6 +109,10 @@ func validateConfigValue(key, value string) error {
 	case "allow_register":
 		if v != "true" && v != "false" {
 			return fmt.Errorf("allow_register 必须是 true 或 false")
+		}
+	case "share_enabled":
+		if v != "true" && v != "false" {
+			return fmt.Errorf("share_enabled 必须是 true 或 false")
 		}
 	case "site_title":
 		// F-6：应用标题校验。空标题会让页头/登录页标题塌陷；超长破坏布局；

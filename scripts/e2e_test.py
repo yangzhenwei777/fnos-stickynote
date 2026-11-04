@@ -1311,6 +1311,36 @@ def main():
         except Exception as ex:
             t(f"§42 版本历史异常: {ex}", False)
 
+        # -------------------------------------------------------------------
+        # §43 2.6.0 分享链接：公开只读页 + 撤销
+        # -------------------------------------------------------------------
+        print("\n[E2E] §43 分享链接 ...")
+        try:
+            r = page.request.post(f"{http_base}/api/notes",
+                                  data={"title": "§43 分享笔记", "content": "<p>share-e2e-body</p>"})
+            share_nid = r.json().get("id") if r.ok else None
+            r = page.request.post(f"{http_base}/api/notes/{share_nid}/share",
+                                  data={"expires_in_days": 7})
+            share_data = r.json() if r.ok else {}
+            share_token = share_data.get("token")
+            share_id = share_data.get("id")
+            ctx = browser.new_context()
+            public = ctx.new_page()
+            public.set_default_timeout(30000)
+            public.goto(f"{http_base}/share?t={share_token}", wait_until="networkidle")
+            public.wait_for_selector('.share-content')
+            t("§43.1 公开页标题可见", "§43 分享笔记" in public.content())
+            body = public.locator('.share-content').inner_text()
+            t("§43.2 公开页正文可见", "share-e2e-body" in body, body[:60])
+            t("§43.3 公开页无登录侧栏", public.locator('.notes-sidebar').count() == 0)
+            page.request.delete(f"{http_base}/api/notes/{share_nid}/shares/{share_id}")
+            public.goto(f"{http_base}/share?t={share_token}", wait_until="networkidle")
+            public.locator('.share-state', has_text="不存在").wait_for(state='visible')
+            t("§43.4 撤销后公开页显示失效", True)
+            ctx.close()
+        except Exception as ex:
+            t(f"§43 分享链接异常: {ex}", False)
+
         page.close()
         browser.close()
 

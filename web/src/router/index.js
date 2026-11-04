@@ -23,6 +23,12 @@ const routes = [
     component: () => import('@/views/ForgotPasswordView.vue')
   },
   {
+    // 2.6.0 分享链接公开只读页（无需登录；单段路由 + query token，兼容网关子路径）
+    path: '/share',
+    name: 'Share',
+    component: () => import('@/views/ShareView.vue')
+  },
+  {
     path: '/',
     component: () => import('@/layouts/MainLayout.vue'),
     meta: { requiresAuth: true },
@@ -201,7 +207,7 @@ router.beforeEach(async (to, from, next) => {
   // 无本地会话状态时，尝试用 refresh cookie 恢复会话（自动登录）；
   // 显式登出后（logged_out 标志）跳过——fnOS 反代/iframe 下残留 cookie 可能未清，
   // 放任 tryRefresh 会把刚登出的会话复活（v18.1 真机退出失效的根因）。
-  if (!auth.isAuthenticated && !refreshAttempted && !localStorage.getItem(LOGGED_OUT_KEY)) {
+  if (!auth.isAuthenticated && !refreshAttempted && !localStorage.getItem(LOGGED_OUT_KEY) && to.name !== 'Share') {
     refreshAttempted = true
     await auth.tryRefresh()
   }

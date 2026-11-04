@@ -128,6 +128,8 @@ func columnExists(table, column string) (bool, error) {
 		"sync_snapshots": true, "sync_snapshots_hold": true,
 		// 2.5.0 版本历史表（与 ensureSchema/老库补丁 DDL 同步登记）
 		"note_history": true,
+		// 2.6.0 分享链接表（与 ensureSchema/老库补丁 DDL 同步登记）
+		"note_shares": true,
 	}
 	if !allowedTables[table] {
 		return false, fmt.Errorf("invalid table for PRAGMA: %q", table)

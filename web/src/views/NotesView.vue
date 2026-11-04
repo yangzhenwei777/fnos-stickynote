@@ -234,6 +234,13 @@
                       >
                         <el-icon><Clock /></el-icon>历史版本
                       </el-dropdown-item>
+                      <!-- 2.6.0 分享链接（加密笔记不支持；桌面端走网页版，入口隐藏） -->
+                      <el-dropdown-item
+                        v-if="!currentNote.is_encrypted && !IS_DESKTOP"
+                        command="share"
+                      >
+                        <el-icon><Share /></el-icon>分享链接
+                      </el-dropdown-item>
                       <el-dropdown-item
                         command="delete"
                         class="danger-item"
@@ -458,6 +465,10 @@
     :note="currentNote"
     @restored="onHistoryRestored"
   />
+  <ShareDialog
+    v-model="shareDialogVisible"
+    :note="currentNote"
+  />
 </template>
 
 <script setup>
@@ -465,8 +476,9 @@
 // 2026-11-03 巨型 Vue 拆分 刀4：全部视图编排逻辑抽至 composables/useNotesView.js
 // （setup 体机械搬移，零行为变化）；本文件保留模板 + 模板直接引用的图标/子组件/fn。
 // 样式外置于 styles/notes-view.css（历史既定），历史修复点见 useNotesView.js 内注释。
-import { Plus, Delete, Document, EditPen, Lock, Unlock, View, Download, Upload, ArrowLeft, ArrowRight, MoreFilled, FolderOpened, CopyDocument, Loading, Picture, Clock } from '@element-plus/icons-vue'
+import { Plus, Delete, Document, EditPen, Lock, Unlock, View, Download, Upload, ArrowLeft, ArrowRight, MoreFilled, FolderOpened, CopyDocument, Loading, Picture, Clock, Share } from '@element-plus/icons-vue'
 import { formatDate } from '@/utils/note'
+import { IS_DESKTOP } from '@/api/local/transport'
 import TiptapEditor from '@/components/TiptapEditor.vue'
 import NoteSidebar from '@/components/NoteSidebar.vue'
 import NoteImagePreview from '@/components/NoteImagePreview.vue'
@@ -474,6 +486,7 @@ import DragResizer from '@/components/DragResizer.vue'
 import FolderPickerDialog from '@/components/FolderPickerDialog.vue'
 import NotePasswordDialog from '@/components/NotePasswordDialog.vue'
 import NoteHistoryDialog from '@/components/NoteHistoryDialog.vue'
+import ShareDialog from '@/components/ShareDialog.vue'
 import { useNotesView } from '@/composables/useNotesView'
 
 const {
@@ -495,6 +508,7 @@ const {
   handleViewAction, showPasswordDialog,
   folderPickerVisible, folderPickerTitle, folderPickerLoading, handleFolderPick,
   historyDialogVisible, onHistoryRestored,
+  shareDialogVisible,
   handlePwdSubmit, loadAllNotes, notesRootRef
 } = useNotesView()
 </script>

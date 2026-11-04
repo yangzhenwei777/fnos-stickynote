@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.6.0
+
+- Share links for non-encrypted notes: create a read-only public link from the note menu with a 1 / 7 / 30-day expiry.
+- The 32-byte random token is returned only once; only its SHA-256 hash is stored. Links can be revoked at any time and stop working immediately.
+- Public page `/share?t=<token>` needs no login, sends `noindex` / `no-store`, and shows only the title, content and updated time.
+- Encrypted notes cannot be shared; a global `share_enabled` switch is available in the admin settings.
+- Folder-lock and ownership checks apply; create/revoke events are audited; share rows are removed with permanent deletion, trash purge and user deletion.
+- No new dependencies.
+
 ## 2.5.0
 
 - Version history for non-encrypted notes: the previous state is captured before every save, and a background job adds an automatic snapshot every 10 minutes for changed notes (content-hash deduped).
