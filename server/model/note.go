@@ -112,6 +112,12 @@ func ListNotes(userID int64, page, pageSize int, search, tag, sortBy string, fol
 	if utf8.RuneCountInString(search) > 200 {
 		search = string([]rune(search)[:200])
 	}
+	// 2.4.0 搜索语法：tag:/folder:/sort:/since:/until: 前缀过滤，其余作为全文关键词
+	syntax := parseSearchSyntax(search)
+	search = syntax.Keyword
+	if syntax.SortBy != "" {
+		sortBy = syntax.SortBy
+	}
 	offset := (page - 1) * pageSize
 
 	var total int
@@ -156,6 +162,25 @@ func ListNotes(userID int64, page, pageSize int, search, tag, sortBy string, fol
 		}
 	}
 
+	// 2.4.0 搜索语法过滤：全部参数化；folder 按名称精确匹配当前用户的文件夹。
+	// since/until 作用于 updated_at，按服务器本地日期比较（含边界日）。
+	for _, t := range syntax.Tags {
+		conditions += " AND (',' || REPLACE(notes.tags, ' ', '') || ',') LIKE ?"
+		args = append(args, "%,"+strings.ReplaceAll(t, " ", "")+",%")
+	}
+	if syntax.Folder != "" {
+		conditions += " AND notes.folder_id = (SELECT id FROM note_folders WHERE user_id = notes.user_id AND name = ?)"
+		args = append(args, syntax.Folder)
+	}
+	if syntax.Since != "" {
+		conditions += " AND date(notes.updated_at, 'localtime') >= ?"
+		args = append(args, syntax.Since)
+	}
+	if syntax.Until != "" {
+		conditions += " AND date(notes.updated_at, 'localtime') <= ?"
+		args = append(args, syntax.Until)
+	}
+
 	// v2.3.0 文件夹访问锁：未授权时排除锁定文件夹（含搜索/标签路径）。
 	lockCond, lockArgs := FolderLockCondition("notes.", userID, grant)
 	conditions += lockCond
@@ -179,11 +204,11 @@ func ListNotes(userID int64, page, pageSize int, search, tag, sortBy string, fol
 
 	queryArgs := append([]interface{}{}, args...)
 
-	orderClause := "ORDER BY updated_at DESC"
+	orderClause := "ORDER BY notes.updated_at DESC"
 	if sortBy == "title" {
-		orderClause = "ORDER BY title ASC"
+		orderClause = "ORDER BY notes.title ASC"
 	} else if sortBy == "created_at" {
-		orderClause = "ORDER BY created_at DESC"
+		orderClause = "ORDER BY notes.created_at DESC"
 	}
 
 	queryArgs = append(queryArgs, pageSize, offset)

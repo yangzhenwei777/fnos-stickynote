@@ -1216,6 +1216,64 @@ def main():
         except Exception as ex:
             t(f"§40 布局分栏门禁异常: {ex}", False)
 
+        # -------------------------------------------------------------------
+        # §41 2.4.0 优化批：搜索语法 / 斜杠命令 / 阅读大纲
+        # -------------------------------------------------------------------
+        print("\n[E2E] §41 搜索语法 + 斜杠命令 + 阅读大纲 ...")
+        try:
+            r = page.request.post(f"{http_base}/api/notes",
+                                  data={"title": "§41 搜索语法目标", "content": "<p>目标正文</p>", "tags": "e2e语法"})
+            r = page.request.post(f"{http_base}/api/notes",
+                                  data={"title": "§41 搜索语法干扰", "content": "<p>干扰正文</p>", "tags": "别的"})
+            page.goto(f"{http_base}/", wait_until="networkidle")
+            wait(500)
+            page.fill('.search-input input', 'tag:e2e语法')
+            wait(900)
+            items = page.locator('.note-item').all_inner_texts()
+            t("§41.1 搜索语法 tag: 过滤生效",
+              any("§41 搜索语法目标" in x for x in items) and not any("§41 搜索语法干扰" in x for x in items),
+              items[:5])
+            page.fill('.search-input input', '')
+            wait(700)
+        except Exception as ex:
+            t(f"§41.1 搜索语法 UI 链路异常: {ex}", False)
+
+        try:
+            page.request.post(f"{http_base}/api/notes",
+                              data={"title": "§41 斜杠命令", "content": "<p></p>"})
+            page.goto(f"{http_base}/", wait_until="networkidle")
+            wait(500)
+            page.locator('.note-item', has_text="§41 斜杠命令").first.click()
+            wait(400)
+            page.click('button:has-text("编辑")')
+            page.wait_for_selector('.ProseMirror')
+            page.click('.ProseMirror')
+            page.keyboard.type('/')
+            wait(300)
+            t("§41.2 段首 / 唤起斜杠菜单", page.locator('.slash-menu').is_visible())
+            page.keyboard.type('h1')
+            wait(200)
+            page.keyboard.press('Enter')
+            wait(400)
+            t("§41.3 斜杠命令插入标题 1", page.locator('.ProseMirror h1').count() >= 1)
+        except Exception as ex:
+            t(f"§41.2 斜杠命令链路异常: {ex}", False)
+
+        try:
+            page.request.post(f"{http_base}/api/notes",
+                              data={"title": "§41 大纲笔记", "content": "<h1>章节一</h1><p>a</p><h2>章节二</h2><p>b</p>"})
+            page.goto(f"{http_base}/", wait_until="networkidle")
+            wait(500)
+            page.locator('.note-item', has_text="§41 大纲笔记").first.click()
+            page.wait_for_selector('.note-outline')
+            texts = page.locator('.note-outline-item').all_inner_texts()
+            t("§41.4 阅读态大纲提取 h1/h2", texts == ["章节一", "章节二"], texts)
+            page.locator('.note-outline-item').nth(1).click()
+            wait(200)
+            t("§41.5 大纲点击跳转无异常", page.locator('.view-content h2').count() >= 1)
+        except Exception as ex:
+            t(f"§41.4 阅读态大纲异常: {ex}", False)
+
         page.close()
         browser.close()
 

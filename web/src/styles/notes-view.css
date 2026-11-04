@@ -675,6 +675,77 @@ html[data-theme="dark"] .clear-tag:hover {
   padding: 4px 0;
 }
 
+/* 2.4.0 阅读态大纲：正文与右侧目录并排，目录 sticky 跟随滚动。 */
+.view-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+  flex: 1;
+  min-height: 0;
+}
+
+.view-body > .view-content {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.note-outline {
+  flex: 0 0 190px;
+  position: sticky;
+  top: 8px;
+  max-height: calc(100vh - 220px);
+  overflow-y: auto;
+  padding: 4px 0 4px 12px;
+  border-left: 1px solid var(--border-color);
+}
+
+.note-outline-title {
+  margin-bottom: 6px;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.note-outline-item {
+  display: block;
+  width: 100%;
+  padding: 4px 0;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note-outline-item:hover {
+  color: var(--primary-color);
+}
+
+.note-outline-item.level-1 {
+  padding-left: 0;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.note-outline-item.level-2 {
+  padding-left: 10px;
+}
+
+.note-outline-item.level-3 {
+  padding-left: 20px;
+}
+
+@media (max-width: 1100px) {
+  .note-outline {
+    display: none;
+  }
+}
+
 /* v21.48：块级样式同时应用于正常预览（.view-content）与编辑内预览（.note-preview-content），
    避免编辑后点【预览】时表格/标题/列表等样式丢失（此前仅 .view-content 有样式） */
 .view-content :deep(h1),

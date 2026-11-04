@@ -14,6 +14,7 @@ import { useNoteSearch } from '@/composables/useNoteSearch'
 import { useNoteEncrypt } from '@/composables/useNoteEncrypt'
 import { useAutoSave } from '@/composables/useAutoSave'
 import { useNoteImport } from '@/composables/useNoteImport'
+import { extractNoteOutline } from '@/composables/useNoteOutline'
 import { useFolderStore } from '@/stores/folder'
 import { useFolderSecurityStore } from '@/stores/folderSecurity'
 import { stripHtml, toggleTaskItemInHtml } from '@/utils/note'
@@ -137,6 +138,17 @@ const sanitizedContent = computed(() => sanitizeNoteHtml(currentNote.value?.cont
 // 未经 DOMPurify 的编辑中内容（与 IndexedDB 草稿同源），恶意 HTML 有 DOM XSS 风险。
 // 统一走与正常查看一致的 sanitizer。
 const previewSanitizedContent = computed(() => sanitizedContent.value)
+
+// 2.4.0 阅读态大纲：仅从已消毒 HTML 提取标题，点击按索引滚动到对应 h1~h3。
+const noteOutline = computed(() => extractNoteOutline(sanitizedContent.value))
+
+function scrollToOutlineHeading(index) {
+  const root = viewContentRef.value
+  if (!root) return
+  const headings = root.querySelectorAll('h1, h2, h3')
+  const target = headings[index]
+  if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
 
 // v21.220：预览态代码块复制按钮——查看态（.view-content）与编辑内预览（.note-preview-content）
 // 都是 v-html 静态渲染（无编辑器实例），内容每次变更后重挂（attachCodeCopyButtons 幂等去重）。
@@ -631,6 +643,7 @@ watch(() => currentNote.value?.id, () => {
     saveStatus, markDirty, saveBeforeSwitch, checkDraft, clearDraft, clearSaveState, saveConflict,
     syncBaselineContent, resetBaseline, handleKeydown, handleBeforeUnload, cleanupTimers,
     fileInput, sanitizedContent, previewSanitizedContent,
+    noteOutline, scrollToOutlineHeading,
     viewContentRef, notePreviewContentRef, noteHighlight,
     createNewNote, handleImportFile, selectNote, enterEditMode, togglePreview, quickEditNote,
     removeNote, handleViewAction, exportNoteAsImage,

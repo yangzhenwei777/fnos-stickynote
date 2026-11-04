@@ -8,3 +8,9 @@
 # 同口径挂账，桌面侧仅用 pbkdf2/hkdf，openpgp 不在符号路径）。新增豁免必须带
 #   <ID> | DUE:YYYY-MM-DD | RUNTIME:yes/no | REASON:<接受原因> | OWNER:<责任人> | NOTE:<备注>
 GO-2026-5932 | DUE:2026-12-31 | RUNTIME:no | REASON:模块级公告无符号调用链（桌面仅用 x/crypto pbkdf2/hkdf，openpgp 不在路径）；无修复版本 | OWNER:项目维护者 | NOTE:与 NAS 基线同项同口径（v21.93 存量补齐同源），统一复查 2026-12-31
+
+# ---- 2026-11-04 公开仓 Dependabot 复核（非本门禁条目）----
+# Dependabot 对 desktop/go.mod 报 echo/v4 两条 medium（GHSA-246p-cpwv-v3jq / GHSA-99jh-6h7p-pp36，
+#   影响 <=4.16.2，上游无修复版）：仅 wails devserver 间接依赖，相关中间件未启用，生产 exe 不启用。
+# **GHSA 不写入上方机器可读区**——load_go_baseline 只解析 GO- ID，写入不会生效（假覆盖）；
+#   口径与 dismiss 理由见《漏洞基线治理台账》§七（DUE 2027-01-31）。

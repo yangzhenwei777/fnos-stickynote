@@ -1,8 +1,10 @@
 # npm 漏洞基线（vuln_gate.py --mode npm 白名单）
-# 生成：2026-08-06 20:50 ｜ 最后更新：2026-10-28（2.2.2 轮，补挂 deepmerge）
+# 生成：2026-08-06 20:50 ｜ 最后更新：2026-11-04（2.3.2 轮新增 15 条 + 公开仓 Dependabot 4 条复核；共 24 条）
 # 工具：npm audit --json --registry=https://registry.npmjs.org
 # 更新方式：运行 `npm audit --json --registry=https://registry.npmjs.org | python3 scripts/vuln_gate.py --mode npm --baseline docs/vuln_baseline_npm.txt`（需 npmjs.org 可达）
 # 规则：CI 中 audit 发现的漏洞，凡 GHSA ID 或包名在本文件内的视为"在案挂账"，不阻断；新增才阻断（纪律 6.2）
+# 2026-11-04 公开仓 Dependabot 复核：open 4 条（#14 minimatch / #12 deepmerge / #11 #10 echo/v4）均为既有挂账；
+#   npm 侧两条按 tolerable_risk dismiss（非修复），echo 两条为 Dependabot-only（见《漏洞基线治理台账》§七）。
 
 # ---- 在案挂账条目 ----
 # 2026-08-13 v21.66（三份审计 P2）：sharp <0.35.0（libvips CVE-2026-33327/33328/35590/35591，high，GHSA-f88m-g3jw-g9cj）

@@ -264,13 +264,16 @@
     <SyncInitBanner />
 
     <div class="notes-list-toolbar">
-      <div class="search-box">
+      <div
+        class="search-box"
+        title="搜索语法：tag:标签、folder:文件夹、sort:updated|created|title、since:2026-01-01、until:2026-12-31，多个条件用空格分隔"
+      >
         <el-icon class="search-icon">
           <Search />
         </el-icon>
         <el-input
           v-model="searchQuery"
-          placeholder="搜索笔记..."
+          placeholder="搜索笔记… 支持 tag: folder:"
           clearable
           class="search-input"
           @input="debouncedSearch"

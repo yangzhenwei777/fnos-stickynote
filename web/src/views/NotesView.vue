@@ -255,13 +255,34 @@
               </div>
             </div>
           </div>
-          <div
-            ref="viewContentRef"
-            class="view-content"
-            @click="openImageViewer"
-            @change="onPreviewCheckboxToggle"
-            v-html="sanitizedContent"
-          />
+          <div class="view-body">
+            <div
+              ref="viewContentRef"
+              class="view-content"
+              @click="openImageViewer"
+              @change="onPreviewCheckboxToggle"
+              v-html="sanitizedContent"
+            />
+            <aside
+              v-if="!isMobile && noteOutline.length >= 2"
+              class="note-outline"
+              aria-label="文章大纲"
+            >
+              <div class="note-outline-title">
+                大纲
+              </div>
+              <button
+                v-for="(item, i) in noteOutline"
+                :key="i"
+                type="button"
+                class="note-outline-item"
+                :class="'level-' + item.level"
+                @click="scrollToOutlineHeading(i)"
+              >
+                {{ item.text }}
+              </button>
+            </aside>
+          </div>
         </div>
 
         <!-- 统一密码弹框（查看/编辑/解密）→ NotePasswordDialog.vue（NotesView 弹框组件化，逻辑仍在 useNoteEncrypt） -->
@@ -454,6 +475,7 @@ const {
   pwdPlaceholder, pwdInput, pwdConfirm, pwdLoading,
   saveStatus, markDirty, syncBaselineContent,
   sanitizedContent, previewSanitizedContent,
+  noteOutline, scrollToOutlineHeading,
   viewContentRef, notePreviewContentRef, noteHighlight,
   createNewNote, handleImportFile, selectNote, enterEditMode, togglePreview, quickEditNote,
   handleViewAction, showPasswordDialog,

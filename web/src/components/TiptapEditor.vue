@@ -12,6 +12,16 @@
       class="editor-content"
       :editor="editor"
     />
+
+    <SlashMenu
+      v-if="slashOpen"
+      :items="slashItems"
+      :active-index="slashIndex"
+      :top="slashPos.top"
+      :left="slashPos.left"
+      @select="applySlashItem"
+      @hover="slashIndex = $event"
+    />
   </div>
 </template>
 
@@ -27,7 +37,7 @@
 //   ② useEditor 生命周期胶水 + 内容回流（scheduleEmit/flushContent）+ toolbarTick 驱动留本组件；
 //   ③ 与 NotesView 的弹框组件化联动（另立项）。
 import { useEditor, EditorContent } from '@tiptap/vue-3'
-import { watch, ref } from 'vue'
+import { watch, ref, computed } from 'vue'
 import StarterKit from '@tiptap/starter-kit'
 // v21.109 tiptap 3.x 迁移：Placeholder 并入 @tiptap/extensions（命名导入；本项目仅用 placeholder 文本，
 // 被移除的 considerAnyAsEmpty 选项未使用）
@@ -57,6 +67,8 @@ import { StickyTable, PctTableView } from './editor/tablePctView'
 import { TablePctResize } from './editor/tablePctResize'
 import { lowlight } from 'lowlight/lib/common.js'
 import EditorToolbar from './editor/EditorToolbar.vue'
+import SlashMenu from './editor/SlashMenu.vue'
+import { filterSlashItems } from './editor/slashItems'
 import { EMIT_DEBOUNCE, EMIT_MAX_WAIT } from './editor/constants'
 import { FontFamily, FontSize, ResizableImage, IndentParagraph, StickyTaskItem } from './editor/extensions'
 // v2.2.1（用户反馈 2b）：Markdown 粘贴转换迁移至官方 editorProps.handlePaste（防双插）
@@ -158,6 +170,95 @@ function computeToolbarSig() {
 // 继承官方），唯一行为差异：触屏设备勾选时跳过 focus()，桌面端不变。
 // ⚠️ 升级 Tiptap 时须对照官方 task-item nodeView 复核本覆写（交付说明挂账）。
 
+// ---- 2.4.0 斜杠命令：段首输入 / 唤起插入菜单（纯前端，无新增依赖）----
+const slashOpen = ref(false)
+const slashQuery = ref('')
+const slashIndex = ref(0)
+const slashRange = ref({ from: 0, to: 0 })
+const slashPos = ref({ top: 0, left: 0 })
+const slashItems = computed(() => filterSlashItems(slashQuery.value))
+
+function closeSlash() {
+  slashOpen.value = false
+  slashQuery.value = ''
+  slashIndex.value = 0
+}
+
+function caretMenuPos(ed, pos) {
+  try {
+    const coords = ed.view.coordsAtPos(pos)
+    return {
+      top: Math.max(8, coords.bottom + 6),
+      left: Math.max(8, Math.min(coords.left, window.innerWidth - 224))
+    }
+  } catch {
+    return { top: 80, left: 80 }
+  }
+}
+
+function updateSlashState() {
+  const ed = editor.value
+  if (!ed) return
+  const { $from, empty } = ed.state.selection
+  if (!empty || $from.parent.type.name !== 'paragraph') {
+    closeSlash()
+    return
+  }
+  const text = $from.parent.textContent
+  if (!text.startsWith('/') || text.length > 21) {
+    closeSlash()
+    return
+  }
+  const query = text.slice(1)
+  if (/\s/.test(query) || filterSlashItems(query).length === 0) {
+    closeSlash()
+    return
+  }
+  slashQuery.value = query
+  slashRange.value = { from: $from.start(), to: $from.pos }
+  slashIndex.value = 0
+  slashPos.value = caretMenuPos(ed, $from.pos)
+  slashOpen.value = true
+}
+
+function applySlashItem(item) {
+  const ed = editor.value
+  if (!ed || !item) return
+  const { from, to } = slashRange.value
+  closeSlash()
+  let chain = ed.chain().focus()
+  if (to > from) chain = chain.deleteRange({ from, to })
+  item.run(chain).run()
+}
+
+function handleSlashKeyDown(event) {
+  if (!slashOpen.value) return false
+  const items = slashItems.value
+  if (event.key === 'ArrowDown') {
+    slashIndex.value = (slashIndex.value + 1) % items.length
+    event.preventDefault()
+    return true
+  }
+  if (event.key === 'ArrowUp') {
+    slashIndex.value = (slashIndex.value - 1 + items.length) % items.length
+    event.preventDefault()
+    return true
+  }
+  if (event.key === 'Enter') {
+    const item = items[slashIndex.value]
+    if (!item) return false
+    event.preventDefault()
+    applySlashItem(item)
+    return true
+  }
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    closeSlash()
+    return true
+  }
+  return false
+}
+
 const editor = useEditor({
   editorProps: {
     // v2.2.1（用户反馈 2b：粘贴双插修复）——Markdown 文本粘贴的官方接管点。
@@ -174,7 +275,8 @@ const editor = useEditor({
       event.preventDefault()
       editor.value?.chain().focus().insertContent(html).run()
       return true
-    }
+    },
+    handleKeyDown: (_view, event) => handleSlashKeyDown(event)
   },
   extensions: [
     // v21.109 tiptap 3.x：StarterKit 默认内置 Link/Underline/ListKeymap——本项目对
@@ -233,7 +335,14 @@ const editor = useEditor({
   },
   onUpdate: () => {
     // v21.85：不再每事务全量 getHTML() 回流，防抖合并后统一发出
+    updateSlashState()
     scheduleEmit()
+  },
+  onSelectionUpdate: () => {
+    if (slashOpen.value) updateSlashState()
+  },
+  onBlur: () => {
+    closeSlash()
   },
   onTransaction: () => {
     // v21.85：工具栏高亮改由事务驱动（含纯选区变化），不再依赖 v-model 回流。
@@ -252,6 +361,7 @@ const editor = useEditor({
     // v21.85：卸载前把防抖窗口内的未发内容同步给父组件，防止编辑丢失
     flushContent()
     cancelPendingEmit()
+    closeSlash()
   }
 })
 

@@ -363,6 +363,47 @@ def main():
         ids = [n.get("id") for n in (j or {}).get("notes", [])]
         check("恢复后搜索可见", f1 in ids, f"ids={ids}")
 
+        # --- 11.6b 2.4.0 搜索语法：tag:/folder:/sort:/since:/until: 白名单解析 ---
+        s, j, _, _ = req("GET", "/api/notes?q=" + _q("tag:科技"), cookies=sc)
+        ids = [n.get("id") for n in (j or {}).get("notes", [])]
+        check("11.6b tag: 语法命中且不串标签", f1 in ids and f2 not in ids, f"ids={ids}")
+        s, j, _, _ = req("GET", "/api/notes?q=" + _q("tag:科技 拓扑量子"), cookies=sc)
+        ids = [n.get("id") for n in (j or {}).get("notes", [])]
+        check("11.6c tag: + 关键词（FTS 分支）", ids == [f1], f"ids={ids}")
+
+        s, j, _, _ = req("POST", "/api/folders", {"name": "语法资料"}, cookies=sc)
+        syn_fid = (j or {}).get("id")
+        s, j, _, _ = req("POST", "/api/notes", {"title": "文件夹内语法笔记", "content": "<p>仅此一篇</p>", "folder_id": syn_fid}, cookies=sc)
+        syn_folder_nid = (j or {}).get("id")
+        s, j, _, _ = req("GET", "/api/notes?q=" + _q('folder:"语法资料"'), cookies=sc)
+        ids = [n.get("id") for n in (j or {}).get("notes", [])]
+        check("11.6d folder: 按名称精确过滤", syn_folder_nid in ids and f1 not in ids, f"ids={ids}")
+
+        s, j, _, _ = req("POST", "/api/notes", {"title": "语法排序 A", "content": "<p>语法排序</p>", "tags": "科技,语法"}, cookies=sc)
+        syn_a = (j or {}).get("id")
+        s, j, _, _ = req("POST", "/api/notes", {"title": "语法排序 B", "content": "<p>语法排序</p>", "tags": "美食,语法"}, cookies=sc)
+        syn_b = (j or {}).get("id")
+        syn_db = _sq.connect(os.path.join(data_dir, "notepad.db"))
+        syn_db.execute("UPDATE notes SET updated_at='2026-01-05 10:00:00' WHERE id=?", (syn_a,))
+        syn_db.execute("UPDATE notes SET updated_at='2026-03-05 10:00:00' WHERE id=?", (syn_b,))
+        syn_db.commit()
+        syn_db.close()
+
+        s, j, _, _ = req("GET", "/api/notes?q=" + _q("sort:title 语法排序"), cookies=sc)
+        ids = [n.get("id") for n in (j or {}).get("notes", [])]
+        check("11.6e sort:title 覆盖排序", ids == [syn_a, syn_b], f"ids={ids}")
+        s, j, _, _ = req("GET", "/api/notes?q=" + _q("since:2026-02-01 语法排序"), cookies=sc)
+        ids = [n.get("id") for n in (j or {}).get("notes", [])]
+        check("11.6f since: 过滤最近修改", ids == [syn_b], f"ids={ids}")
+        s, j, _, _ = req("GET", "/api/notes?q=" + _q("until:2026-01-31 语法排序"), cookies=sc)
+        ids = [n.get("id") for n in (j or {}).get("notes", [])]
+        check("11.6g until: 过滤最近修改", ids == [syn_a], f"ids={ids}")
+        s, j, _, _ = req("GET", "/api/notes?q=" + _q("tag:科技 tag:语法"), cookies=sc)
+        ids = [n.get("id") for n in (j or {}).get("notes", [])]
+        check("11.6h 多标签 AND", ids == [syn_a], f"ids={ids}")
+        s, j, _, _ = req("GET", "/api/notes?q=" + _q("sort:oops"), cookies=sc)
+        check("11.6i 非法语法回退关键词不报错", s == 200, f"status={s}")
+
         # 11.7 导出单篇：纯文本 + 中文文件名头
         conn = http.client.HTTPConnection(BASE, timeout=10)
         conn.request("GET", f"/api/notes/{f2}/export", headers={"Cookie": "; ".join(f"{k}={v}" for k, v in sc.items())})
