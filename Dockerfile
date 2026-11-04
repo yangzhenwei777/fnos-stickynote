@@ -1,5 +1,8 @@
+# syntax=docker/dockerfile:1
+# 多架构构建优化（2026-11-05）：web/server 构建阶段固定在 BUILDPLATFORM（CI = amd64）执行，
+# Go 通过 TARGETOS/TARGETARCH 交叉编译到目标架构；避免 arm64 在 QEMU 下重复 npm ci/vite/go build。
 # Stage 1: Build frontend
-FROM node:22.23.4-alpine AS web-build
+FROM --platform=$BUILDPLATFORM node:22.23.4-alpine AS web-build
 WORKDIR /app/web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci
@@ -8,17 +11,19 @@ RUN npm run build
 
 # Stage 2: Build backend
 # 钉版纪律：与工具链一致（CI setup-go 1.26.10），禁 float 小版本
-FROM golang:1.26.10-alpine AS server-build
+FROM --platform=$BUILDPLATFORM golang:1.26.10-alpine AS server-build
 RUN apk add --no-cache git
 WORKDIR /app/server
 COPY server/go.mod server/go.sum ./
 RUN go mod download
 COPY server/ ./
 COPY --from=web-build /app/web/dist ./static/dist
+ARG TARGETOS
+ARG TARGETARCH
 ARG VERSION=dev
 ARG BUILD_TIME=unknown
 ARG GIT_COMMIT=unknown
-RUN CGO_ENABLED=0 go build -ldflags "-s -w -X main.Version=${VERSION} -X main.BuildTime=${BUILD_TIME} -X main.GitCommit=${GIT_COMMIT}" -o /sticky-note ./main.go
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -ldflags "-s -w -X main.Version=${VERSION} -X main.BuildTime=${BUILD_TIME} -X main.GitCommit=${GIT_COMMIT}" -o /sticky-note ./main.go
 
 # Stage 3: Runtime
 FROM alpine:3.21

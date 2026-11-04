@@ -10,6 +10,11 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      version:
+        description: "发布版本（如 2.6.0）；留空 = edge 演练"
+        required: false
+        default: ""
 
 jobs:
   publish:
@@ -35,8 +40,17 @@ jobs:
             fi
             echo "tags=davyang/sticky-note:${V},davyang/sticky-note:${MM},davyang/sticky-note:latest" >> "$GITHUB_OUTPUT"
           else
-            V="edge"
-            echo "tags=davyang/sticky-note:edge" >> "$GITHUB_OUTPUT"
+            V="${{ inputs.version }}"
+            if [[ -n "$V" && "$V" != "edge" ]]; then
+              MM="$(echo "$V" | grep -oE '^[0-9]+\.[0-9]+')"
+              if [[ -z "$V" || -z "$MM" ]]; then
+                echo "❌ 非法版本 $V（应为 X.Y.Z）"; exit 1
+              fi
+              echo "tags=davyang/sticky-note:${V},davyang/sticky-note:${MM},davyang/sticky-note:latest" >> "$GITHUB_OUTPUT"
+            else
+              V="edge"
+              echo "tags=davyang/sticky-note:edge" >> "$GITHUB_OUTPUT"
+            fi
           fi
           echo "version=${V}" >> "$GITHUB_OUTPUT"
           echo "created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
