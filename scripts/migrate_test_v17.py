@@ -9,6 +9,7 @@
   C. 新二进制启动 → SQL 层断言迁移结果 + API 层断言老用户全链路可用
 """
 import os
+import re
 import http.client, io, json, os, shutil, sqlite3, subprocess, sys, tempfile, time, zipfile
 from urllib.parse import quote
 
@@ -170,6 +171,14 @@ try:
     cfg_keys = [r[0] for r in db.execute("SELECT key FROM configs")]
     check("v18.7 配置键已补入（存储配额/内容上限）",
           all(k in cfg_keys for k in ("max_storage_mb_per_user", "max_note_content_kb")), str(cfg_keys))
+    check("历史版本配置键已补入",
+          all(k in cfg_keys for k in ("history_max_per_note", "history_retention_days", "history_max_total_mb")), str(cfg_keys))
+    check("旧版本旗标键已改名", "orphan_snapshots_purged_v170" not in cfg_keys, str(cfg_keys))
+    bad_desc = []
+    for k, d in db.execute("SELECT key, description FROM configs"):
+        if re.search(r"(?i)(\bv\d+(\.\d+)*\b|\bP\d+-\d+\b|\b\d+\.\d+\.\d+\b)", f"{k} {d or ''}"):
+            bad_desc.append(f"{k}: {d}")
+    check("配置键/文案无版本号或工单号", not bad_desc, str(bad_desc))
     db.close()
 
     # API 层：老用户登录 + 数据无损 + 搜索 + 导出

@@ -207,8 +207,8 @@ func upgrade_v1_0_0(tx *sql.Tx) error {
 			('cors_origins', '', 'CORS 跨域白名单（逗号分隔；* 全放行；空=仅同源）'),
 			('max_storage_mb_per_user', '1024', '每用户上传存储总配额（MB，0=不限）'),
 			('max_note_content_kb', '0', '用户每条笔记的大小上限（KB），超出将无法保存。0=不限制'),
-			('trash_retention_days', '0', '回收站自动清理天数（0=永久保留，P2-6）'),
-			('share_enabled', 'true', '允许创建分享链接（公开只读；2.6.0）')`,
+			('trash_retention_days', '0', '回收站自动清理天数（0=永久保留）'),
+			('share_enabled', 'true', '允许创建分享链接（公开只读）')`,
 	}
 
 	for _, q := range queries {
@@ -303,7 +303,7 @@ func ensureSchema() error {
 			return fmt.Errorf("failed to ensure v18.7 config keys: %w", err)
 		}
 		if _, err := DB.Exec(`INSERT OR IGNORE INTO configs (key, value, description) VALUES
-			('trash_retention_days', '0', '回收站自动清理天数（0=永久保留，P2-6）')`); err != nil {
+			('trash_retention_days', '0', '回收站自动清理天数（0=永久保留）')`); err != nil {
 			return fmt.Errorf("failed to ensure trash_retention_days config: %w", err)
 		}
 	}
@@ -590,7 +590,7 @@ func ensureSchema() error {
 		if berr := backfillNoteUploads(); berr != nil {
 			logger.Error("note_uploads backfill incomplete, will retry next start: %v", berr)
 		} else {
-			if _, err := DB.Exec("INSERT INTO configs (key, value, description) VALUES ('note_uploads_backfilled', 'true', 'note_uploads 存量回填已完成（v21.68）') ON CONFLICT(key) DO UPDATE SET value = 'true'"); err != nil {
+			if _, err := DB.Exec("INSERT INTO configs (key, value, description) VALUES ('note_uploads_backfilled', 'true', ?) ON CONFLICT(key) DO UPDATE SET value = 'true'", ConfigDescription("note_uploads_backfilled")); err != nil {
 				return err
 			}
 			logger.Info("note_uploads backfill completed")
@@ -734,7 +734,7 @@ func ensureSchema() error {
 		if berr := backfillUnescapeNoteTitles(); berr != nil {
 			logger.Error("title entities backfill incomplete, will retry next start: %v", berr)
 		} else {
-			if _, err := DB.Exec("INSERT INTO configs (key, value, description) VALUES ('title_entities_unescaped', 'true', '存量标题 HTML 实体回溯清洗已完成（v21.105）') ON CONFLICT(key) DO UPDATE SET value = 'true'"); err != nil {
+			if _, err := DB.Exec("INSERT INTO configs (key, value, description) VALUES ('title_entities_unescaped', 'true', ?) ON CONFLICT(key) DO UPDATE SET value = 'true'", ConfigDescription("title_entities_unescaped")); err != nil {
 				return err
 			}
 			logger.Info("note title entities backfill completed")
@@ -753,6 +753,20 @@ func ensureSchema() error {
 	// 批次 5 P5：Bootstrap 快照账本 + 附件 Hold 两表（§73/§75）。
 	if err := ensureSyncSnapshotTables(); err != nil {
 		return fmt.Errorf("failed to ensure sync_snapshots: %w", err)
+	}
+
+	// 配置文案治理：旧键改名/死键删除、历史配置补入、存量描述刷新。
+	// 放在函数末尾，确保本函数内后续补入的迁移旗标也能被刷新到标准文案。
+	if configsHas {
+		if err := migrateLegacyConfigs(); err != nil {
+			return fmt.Errorf("failed to migrate legacy configs: %w", err)
+		}
+		if err := ensureHistoryConfigs(); err != nil {
+			return fmt.Errorf("failed to ensure history configs: %w", err)
+		}
+		if err := refreshConfigDescriptions(); err != nil {
+			return fmt.Errorf("failed to refresh config descriptions: %w", err)
+		}
 	}
 	return nil
 }

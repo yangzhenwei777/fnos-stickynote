@@ -2098,6 +2098,39 @@ def main():
         req("DELETE", f"/api/notes/{share_nid}", cookies=sca)
         req("DELETE", f"/api/notes/{enc_share_nid}", cookies=sca)
 
+        print("== 37. 历史版本配置（系统配置页/0 关闭/文案无版本号）==")
+        s, j, _, _ = req("GET", "/api/configs", cookies=sca)
+        cfg37 = {c.get("key"): c for c in (j or {}).get("configs", [])}
+        check("37.1 三项历史配置已补入",
+              all(k in cfg37 for k in ("history_max_per_note", "history_retention_days", "history_max_total_mb")),
+              str(sorted(cfg37.keys())))
+        check("37.2 历史配置默认值正确",
+              (cfg37.get("history_max_per_note") or {}).get("value") == "50"
+              and (cfg37.get("history_retention_days") or {}).get("value") == "180"
+              and (cfg37.get("history_max_total_mb") or {}).get("value") == "2048",
+              str({k: (cfg37.get(k) or {}).get("value") for k in ("history_max_per_note", "history_retention_days", "history_max_total_mb")}))
+        import re as _re37
+        bad37 = []
+        for k, c in cfg37.items():
+            text = f"{k} {c.get('description', '')}"
+            if _re37.search(r"(?i)(\bv\d+(\.\d+)*\b|\bP\d+-\d+\b|\b\d+\.\d+\.\d+\b)", text):
+                bad37.append(text)
+        check("37.3 全部配置键/文案无版本号或工单号", not bad37, str(bad37))
+        check("37.4 旧 allow_external_images 死键已删除", "allow_external_images" not in cfg37, str(sorted(cfg37.keys())))
+        for val, expect_ok in (("20", True), ("0", True), ("1001", False), ("-1", False), ("abc", False)):
+            s, j, _, _ = req("PUT", "/api/configs/history_max_per_note", {"value": val}, cookies=sca)
+            check(f"37.5 history_max_per_note={val} → {'200' if expect_ok else '400'}",
+                  (s == 200) == expect_ok, f"status={s} {j}")
+        req("PUT", "/api/configs/history_max_per_note", {"value": "50"}, cookies=sca)
+        s, j, _, _ = req("POST", "/api/notes", {"title": "历史0测试", "content": "<p>zero</p>"}, cookies=sca)
+        nid37 = (j or {}).get("id")
+        req("PUT", "/api/configs/history_max_per_note", {"value": "0"}, cookies=sca)
+        s, _, _, _ = req("PUT", f"/api/notes/{nid37}", {"title": "历史0测试", "content": "<p>zero2</p>", "tags": "", "version": 1}, cookies=sca)
+        s, j, _, _ = req("GET", f"/api/notes/{nid37}/history", cookies=sca)
+        check("37.6 0=停止生成新历史", s == 200 and (j or {}).get("total") == 0, f"status={s} {j}")
+        req("PUT", "/api/configs/history_max_per_note", {"value": "50"}, cookies=sca)
+        req("DELETE", f"/api/notes/{nid37}", cookies=sca)
+
         print("== 35. 统一网关模式双监听（v2.2.0）==")
         sock_path = os.path.join(data_dir, "gw.sock")
         dd35 = tempfile.mkdtemp(prefix="sticky-note-smoke-gw-")

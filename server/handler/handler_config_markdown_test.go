@@ -107,7 +107,7 @@ func TestConfigHandlers(t *testing.T) {
 }
 
 func TestIsConfigKeyAllowed(t *testing.T) {
-	allowed := []string{"cors_origins", "max_notes_per_user", "max_storage_mb_per_user", "max_note_content_kb", "trash_retention_days", "allow_register", "site_title"}
+	allowed := []string{"cors_origins", "max_notes_per_user", "max_storage_mb_per_user", "max_note_content_kb", "trash_retention_days", "allow_register", "site_title", "share_enabled", "history_max_per_note", "history_retention_days", "history_max_total_mb"}
 	blocked := []string{"evil", "register_enabled", "allow_external_images", ""}
 	for _, k := range allowed {
 		if !isConfigKeyAllowed(k) {
@@ -129,6 +129,9 @@ func TestValidateConfigValue(t *testing.T) {
 		"trash_retention_days":    "30",
 		"allow_register":          "true",
 		"site_title":              "我的便签",
+		"history_max_per_note":    "0",
+		"history_retention_days":  "180",
+		"history_max_total_mb":    "2048",
 	}
 	invalid := map[string]string{
 		"max_notes_per_user":      "-1",
@@ -137,6 +140,20 @@ func TestValidateConfigValue(t *testing.T) {
 		"trash_retention_days":    "-3",
 		"allow_register":          "yes",
 		"site_title":              "一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十", // 60 字，超过 50 字上限
+		"history_max_per_note":    "1001",
+		"history_retention_days":  "0",
+		"history_max_total_mb":    "63",
+	}
+	// 边界值单独校验（map 一个键只能放一个值）
+	for _, v := range []string{"0", "50", "1000"} {
+		if err := validateConfigValue("history_max_per_note", v); err != nil {
+			t.Errorf("history_max_per_note=%q 应合法: %v", v, err)
+		}
+	}
+	for _, v := range []string{"-1", "1001", "abc"} {
+		if err := validateConfigValue("history_max_per_note", v); err == nil {
+			t.Errorf("history_max_per_note=%q 应非法", v)
+		}
 	}
 	// 空标题单独校验（map 不允许重复键，此处显式断言 site_title 空值/纯空白必须拒绝）
 	if err := validateConfigValue("site_title", ""); err == nil {

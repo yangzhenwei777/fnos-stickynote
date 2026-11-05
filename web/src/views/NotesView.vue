@@ -192,6 +192,8 @@
                 </el-button>
                 <el-dropdown
                   trigger="click"
+                  placement="bottom-end"
+                  popper-class="view-actions-popper"
                   @command="handleViewAction"
                 >
                   <el-button
@@ -201,6 +203,13 @@
                   />
                   <template #dropdown>
                     <el-dropdown-menu>
+                      <!-- 2026-11-05 用户指令：加密且未输入查看密码时仅保留【解密】；
+                           输入查看密码（encryptUnlocked）或未加密后展示完整操作。
+                           完整顺序固定为 加密/解密 → 移动到 → 复制到 → 历史版本 → 删除
+                           → 下载 → 导出长图 → 分享链接，除首项外每项 divided 统一分隔节奏
+                           （覆盖 2.2.2 导出族置顶旧序）。
+                           历史版本/分享链接在加密笔记上后端不支持（无历史快照/禁止分享），
+                           解锁后仍可见但置灰，提示解密后可用。 -->
                       <el-dropdown-item
                         v-if="!currentNote.is_encrypted"
                         command="encrypt"
@@ -213,57 +222,60 @@
                       >
                         <el-icon><Unlock /></el-icon>解密
                       </el-dropdown-item>
-                      <!-- v21.87：移动到/复制到文件夹（弹文件夹选择框） -->
-                      <el-dropdown-item
-                        command="move"
-                        divided
-                      >
-                        <el-icon><FolderOpened /></el-icon>移动到
-                      </el-dropdown-item>
-                      <el-dropdown-item
-                        command="copy"
-                        divided
-                      >
-                        <el-icon><CopyDocument /></el-icon>复制到
-                      </el-dropdown-item>
-                      <!-- 2.5.0 版本历史（加密笔记暂不支持，入口隐藏） -->
-                      <el-dropdown-item
-                        v-if="!currentNote.is_encrypted"
-                        command="history"
-                        divided
-                      >
-                        <el-icon><Clock /></el-icon>历史版本
-                      </el-dropdown-item>
-                      <!-- 2.6.0 分享链接（加密笔记不支持；桌面端走网页版，入口隐藏） -->
-                      <el-dropdown-item
-                        v-if="!currentNote.is_encrypted && !IS_DESKTOP"
-                        command="share"
-                      >
-                        <el-icon><Share /></el-icon>分享链接
-                      </el-dropdown-item>
-                      <el-dropdown-item
-                        command="delete"
-                        class="danger-item"
-                        divided
-                      >
-                        <el-icon><Delete /></el-icon>删除
-                      </el-dropdown-item>
-                      <!-- v2.2.2 导出为长图（预览页正文 → 离屏海报 → PNG）。
-                           R2（用户实测）：导出长图与下载之间缺分隔带且两行视觉贴死
-                           （其余各项均有 divided，唯独下载没有）→ 下载补 divided，
-                           恢复整份菜单统一的行距节奏 -->
-                      <el-dropdown-item
-                        command="export-image"
-                        divided
-                      >
-                        <el-icon><Picture /></el-icon>导出长图
-                      </el-dropdown-item>
-                      <el-dropdown-item
-                        command="download"
-                        divided
-                      >
-                        <el-icon><Download /></el-icon>下载
-                      </el-dropdown-item>
+                      <template v-if="!currentNote.is_encrypted || encryptUnlocked">
+                        <!-- v21.87：移动到/复制到文件夹（弹文件夹选择框） -->
+                        <el-dropdown-item
+                          command="move"
+                          divided
+                        >
+                          <el-icon><FolderOpened /></el-icon>移动到
+                        </el-dropdown-item>
+                        <el-dropdown-item
+                          command="copy"
+                          divided
+                        >
+                          <el-icon><CopyDocument /></el-icon>复制到
+                        </el-dropdown-item>
+                        <!-- 2.5.0 版本历史（加密笔记无历史快照，解锁后置灰） -->
+                        <el-dropdown-item
+                          command="history"
+                          divided
+                          :disabled="currentNote.is_encrypted"
+                          :title="currentNote.is_encrypted ? '解密后可用' : ''"
+                        >
+                          <el-icon><Clock /></el-icon>历史版本
+                        </el-dropdown-item>
+                        <el-dropdown-item
+                          command="delete"
+                          class="danger-item"
+                          divided
+                        >
+                          <el-icon><Delete /></el-icon>删除
+                        </el-dropdown-item>
+                        <el-dropdown-item
+                          command="download"
+                          divided
+                        >
+                          <el-icon><Download /></el-icon>下载
+                        </el-dropdown-item>
+                        <!-- v2.2.2 导出为长图（预览页正文 → 离屏海报 → PNG） -->
+                        <el-dropdown-item
+                          command="export-image"
+                          divided
+                        >
+                          <el-icon><Picture /></el-icon>导出长图
+                        </el-dropdown-item>
+                        <!-- 2.6.0 分享链接（桌面端走网页版，入口隐藏；加密笔记后端禁止分享，解锁后置灰） -->
+                        <el-dropdown-item
+                          v-if="!IS_DESKTOP"
+                          command="share"
+                          divided
+                          :disabled="currentNote.is_encrypted"
+                          :title="currentNote.is_encrypted ? '解密后可用' : ''"
+                        >
+                          <el-icon><Share /></el-icon>分享链接
+                        </el-dropdown-item>
+                      </template>
                     </el-dropdown-menu>
                   </template>
                 </el-dropdown>

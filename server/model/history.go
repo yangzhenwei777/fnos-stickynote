@@ -5,9 +5,9 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"stickynote/database"
@@ -63,6 +63,10 @@ func CaptureNoteHistoryTx(tx *sql.Tx, noteID, userID int64, source string) (bool
 	if encrypted == 1 {
 		return false, nil
 	}
+	maxPerNote := historyMaxPerNoteTx(tx)
+	if maxPerNote == 0 {
+		return false, nil
+	}
 	hash := noteHistoryHash(title, content, tags)
 	var lastHash string
 	err = tx.QueryRow(
@@ -85,7 +89,37 @@ func CaptureNoteHistoryTx(tx *sql.Tx, noteID, userID int64, source string) (bool
 	); err != nil {
 		return false, err
 	}
+	// 每篇上限在保存时立即收敛：不像旧实现只等 24h 清理，避免高频编辑单篇
+	// 在清理窗口内堆出大量历史。
+	if err := pruneNoteHistoryTx(tx, noteID, userID, maxPerNote); err != nil {
+		return false, err
+	}
 	return true, nil
+}
+
+// historyMaxPerNoteTx 在事务内读每篇上限；0 表示停止生成新历史。
+func historyMaxPerNoteTx(tx *sql.Tx) int {
+	var raw string
+	if err := tx.QueryRow("SELECT value FROM configs WHERE key = 'history_max_per_note'").Scan(&raw); err != nil {
+		return DefaultHistoryMaxPerNote
+	}
+	v, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || v < 0 || v > 1000 {
+		return DefaultHistoryMaxPerNote
+	}
+	return v
+}
+
+func pruneNoteHistoryTx(tx *sql.Tx, noteID, userID int64, maxPerNote int) error {
+	if maxPerNote <= 0 {
+		return nil
+	}
+	_, err := tx.Exec(`DELETE FROM note_history WHERE id IN (
+		SELECT id FROM (
+			SELECT id, ROW_NUMBER() OVER (PARTITION BY note_id ORDER BY created_at DESC, id DESC) AS rn
+			FROM note_history WHERE note_id = ? AND user_id = ?
+		) WHERE rn > ?)`, noteID, userID, maxPerNote)
+	return err
 }
 
 func CaptureNoteHistory(noteID, userID int64, source string) (bool, error) {
@@ -233,8 +267,31 @@ func SnapshotRecentNotes(limit int) (int, error) {
 	return inserted, nil
 }
 
+var (
+	historyCleanupSignal = make(chan struct{}, 1)
+	historyCleanupMu     sync.Mutex
+)
+
+// NotifyHistoryConfigChanged 非阻塞通知清理协程：三项历史配置保存后立即按新值收敛。
+func NotifyHistoryConfigChanged() {
+	select {
+	case historyCleanupSignal <- struct{}{}:
+	default:
+	}
+}
+
+// HistoryCleanupSignal 供服务端清理协程监听配置变更。
+func HistoryCleanupSignal() <-chan struct{} {
+	return historyCleanupSignal
+}
+
 // CleanupNoteHistory 按份数/天数/总字节三重上限清理；任一步失败即回滚（Fail-Closed）。
+// maxPerNote=0 表示不按份数裁剪（历史生成已由 CaptureNoteHistoryTx 跳过），
+// 天数/总字节上限仍继续生效。
 func CleanupNoteHistory(maxPerNote, maxAgeDays int, maxTotalBytes int64) (int, error) {
+	historyCleanupMu.Lock()
+	defer historyCleanupMu.Unlock()
+
 	tx, err := database.DB.Begin()
 	if err != nil {
 		return 0, err
@@ -280,19 +337,27 @@ func CleanupNoteHistory(maxPerNote, maxAgeDays int, maxTotalBytes int64) (int, e
 	return int(deleted), nil
 }
 
-func HistoryConfigFromEnv() (maxPerNote, maxAgeDays int, maxTotalBytes int64) {
-	maxPerNote = envInt("HISTORY_MAX_PER_NOTE", DefaultHistoryMaxPerNote, 1, 1000)
-	maxAgeDays = envInt("HISTORY_RETENTION_DAYS", DefaultHistoryRetentionDays, 1, 3650)
-	maxTotalMB := envInt("HISTORY_MAX_TOTAL_MB", DefaultHistoryMaxTotalMB, 64, 102400)
+// GetHistoryConfig 从 configs 表读取三项历史配置；缺失或非法时回退默认值。
+// 环境变量只在新装/升级首次建键时作为初始值，运行时以系统配置页为准。
+func GetHistoryConfig() (maxPerNote, maxAgeDays int, maxTotalBytes int64) {
+	maxPerNote = configInt("history_max_per_note", DefaultHistoryMaxPerNote, 0, 1000)
+	maxAgeDays = configInt("history_retention_days", DefaultHistoryRetentionDays, 1, 3650)
+	maxTotalMB := configInt("history_max_total_mb", DefaultHistoryMaxTotalMB, 64, 102400)
 	return maxPerNote, maxAgeDays, int64(maxTotalMB) * 1024 * 1024
 }
 
-func envInt(name string, def, min, max int) int {
-	raw := strings.TrimSpace(os.Getenv(name))
-	if raw == "" {
+// CleanupNoteHistoryWithConfig 按当前系统配置执行清理。
+func CleanupNoteHistoryWithConfig() (int, error) {
+	maxPerNote, maxAgeDays, maxTotalBytes := GetHistoryConfig()
+	return CleanupNoteHistory(maxPerNote, maxAgeDays, maxTotalBytes)
+}
+
+func configInt(key string, def, min, max int) int {
+	raw, err := GetConfig(key)
+	if err != nil {
 		return def
 	}
-	v, err := strconv.Atoi(raw)
+	v, err := strconv.Atoi(strings.TrimSpace(raw))
 	if err != nil || v < min || v > max {
 		return def
 	}

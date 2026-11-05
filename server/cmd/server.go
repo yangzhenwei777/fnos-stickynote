@@ -169,10 +169,10 @@ func StartServer(port int, dataDir, webDir, uploadDir, shareDirs, socketPath str
 	// v21.67 P1-03：删除用户残留文件兜底重试。
 	database.CleanPendingUploads(uploadPath)
 
-	// 2.5.0 版本历史：每 10 分钟自动快照有变更的笔记；每 24h 按份数/天数/空间上限清理。
+	// 版本历史：每 10 分钟自动快照有变更的笔记；每 24h 按份数/天数/空间上限清理。
+	// 三项历史配置已迁到系统配置页，保存后通过信号立即按新值清理，无需重启。
 	go func() {
-		maxPerNote, maxAgeDays, maxTotalBytes := model.HistoryConfigFromEnv()
-		if n, err := model.CleanupNoteHistory(maxPerNote, maxAgeDays, maxTotalBytes); err != nil {
+		if n, err := model.CleanupNoteHistoryWithConfig(); err != nil {
 			logger.Error("CleanupNoteHistory (startup): %v", err)
 		} else if n > 0 {
 			logger.Info("CleanupNoteHistory (startup): removed %d", n)
@@ -181,20 +181,28 @@ func StartServer(port int, dataDir, webDir, uploadDir, shareDirs, socketPath str
 		defer snapTicker.Stop()
 		cleanTicker := time.NewTicker(24 * time.Hour)
 		defer cleanTicker.Stop()
+		runCleanup := func(reason string) {
+			if n, err := model.CleanupNoteHistoryWithConfig(); err != nil {
+				logger.Error("CleanupNoteHistory (%s): %v", reason, err)
+			} else if n > 0 {
+				logger.Info("CleanupNoteHistory (%s): removed %d", reason, n)
+			}
+		}
 		for {
 			select {
 			case <-snapTicker.C:
+				if maxPerNote, _, _ := model.GetHistoryConfig(); maxPerNote == 0 {
+					continue // 历史已停止生成新快照
+				}
 				if n, err := model.SnapshotRecentNotes(200); err != nil {
 					logger.Error("SnapshotRecentNotes: %v", err)
 				} else if n > 0 {
 					logger.Info("SnapshotRecentNotes: %d snapshots", n)
 				}
 			case <-cleanTicker.C:
-				if n, err := model.CleanupNoteHistory(maxPerNote, maxAgeDays, maxTotalBytes); err != nil {
-					logger.Error("CleanupNoteHistory: %v", err)
-				} else if n > 0 {
-					logger.Info("CleanupNoteHistory: removed %d", n)
-				}
+				runCleanup("daily")
+			case <-model.HistoryCleanupSignal():
+				runCleanup("config change")
 			}
 		}
 	}()

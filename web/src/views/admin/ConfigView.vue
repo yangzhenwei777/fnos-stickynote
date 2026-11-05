@@ -21,10 +21,13 @@
         label="说明"
       />
       <el-table-column
-        prop="value"
         label="当前值"
         width="200"
-      />
+      >
+        <template #default="{ row }">
+          {{ formatValue(row) }}
+        </template>
+      </el-table-column>
       <el-table-column
         label="操作"
         width="120"
@@ -102,6 +105,15 @@
               value="false"
             />
           </el-select>
+          <el-input-number
+            v-else-if="isHistoryNumericKey(editingConfig.key)"
+            :model-value="Number(editValue)"
+            :min="historyInputMin(editingConfig.key)"
+            :max="historyInputMax(editingConfig.key)"
+            :step="1"
+            style="width: 100%"
+            @update:model-value="editValue = $event === null ? '' : String($event)"
+          />
           <el-input
             v-else
             v-model="editValue"
@@ -161,10 +173,44 @@ async function loadConfigs() {
 }
 
 function formatValue(config) {
-  if (config.key === 'allow_register') {
+  if (config.key === 'allow_register' || config.key === 'share_enabled') {
     return config.value === 'true' ? '允许' : '禁止'
   }
+  if (config.key === 'trash_retention_days') {
+    const n = parseInt(config.value, 10)
+    if (!Number.isFinite(n)) return config.value
+    return n === 0 ? '永久保留' : `${n} 天`
+  }
+  if (config.key === 'history_max_per_note') {
+    const n = parseInt(config.value, 10)
+    if (!Number.isFinite(n)) return config.value
+    return n === 0 ? '0 份（已停止生成）' : `${n} 份`
+  }
+  if (config.key === 'history_retention_days') {
+    const n = parseInt(config.value, 10)
+    return Number.isFinite(n) ? `${n} 天` : config.value
+  }
+  if (config.key === 'history_max_total_mb') {
+    const n = parseInt(config.value, 10)
+    return Number.isFinite(n) ? `${n} MB` : config.value
+  }
   return config.value
+}
+
+function isHistoryNumericKey(key) {
+  return ['history_max_per_note', 'history_retention_days', 'history_max_total_mb'].includes(key)
+}
+
+function historyInputMin(key) {
+  if (key === 'history_max_per_note') return 0
+  if (key === 'history_retention_days') return 1
+  return 64
+}
+
+function historyInputMax(key) {
+  if (key === 'history_max_per_note') return 1000
+  if (key === 'history_retention_days') return 3650
+  return 102400
 }
 
 function showEditDialog(config) {

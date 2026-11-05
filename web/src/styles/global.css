@@ -391,3 +391,9 @@ html[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
   color: var(--el-color-danger);
   background-color: rgba(220, 38, 38, 0.08);
 }
+
+/* 笔记预览【更多】下拉：固定最小宽度，避免仅由最长四字文案撑开而显得局促。
+   弹层 Teleport 到 body，scoped 样式无法命中，须用全局规则 + popper-class（2026-11-05） */
+.el-dropdown__popper.view-actions-popper .el-dropdown-menu {
+  min-width: 140px;
+}

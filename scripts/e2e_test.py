@@ -18,6 +18,7 @@ import shutil
 import tempfile
 import atexit
 import json
+import re
 import base64
 import hmac
 import hashlib
@@ -745,6 +746,34 @@ def main():
               apage.url)
             t("旧深链接重定向后页面仍渲染", "用户管理" in apage.content())
 
+            # 全部配置页：三项历史配置可见、文案无版本号、编辑保存可用
+            apage.goto(f"{http_base}/admin-configs", wait_until="networkidle")
+            apage.wait_for_selector('.el-table', timeout=15000)
+            wait(800)
+            table_text = apage.locator('.el-table').inner_text()
+            t("全部配置页含三项历史配置",
+              all(k in table_text for k in ("history_max_per_note", "history_retention_days", "history_max_total_mb")),
+              table_text[:200])
+            t("全部配置页无版本号/工单号文案",
+              not re.search(r"(?i)(\bv\d+(\.\d+)*\b|\bP\d+-\d+\b|\b\d+\.\d+\.\d+\b)", table_text),
+              table_text[:300])
+            row = apage.locator('tr', has_text='history_max_per_note').first
+            row.locator('button:has-text("编辑")').click()
+            wait(400)
+            apage.locator('.el-dialog .el-input-number input').first.fill('20')
+            apage.locator('.el-dialog button:has-text("保存")').last.click()
+            wait(1000)
+            t("历史配置编辑保存后显示 20 份",
+              "20 份" in apage.locator('tr', has_text='history_max_per_note').first.inner_text())
+            row = apage.locator('tr', has_text='history_max_per_note').first
+            row.locator('button:has-text("编辑")').click()
+            wait(400)
+            apage.locator('.el-dialog .el-input-number input').first.fill('50')
+            apage.locator('.el-dialog button:has-text("保存")').last.click()
+            wait(1000)
+            t("历史配置编辑还原 50 份",
+              "50 份" in apage.locator('tr', has_text='history_max_per_note').first.inner_text())
+
             # 注意（本轮发现，未改产品，仅记录）：侧栏"系统配置"菜单跳 /admin/limits，
             # 而 /admin/configs 无菜单入口；且两页 h2 标题同为"系统配置"。
             # 此处直接 goto URL 验证，绕开导航问题，先保证页面本身可测。
@@ -1340,6 +1369,197 @@ def main():
             ctx.close()
         except Exception as ex:
             t(f"§43 分享链接异常: {ex}", False)
+
+        # -------------------------------------------------------------------
+        # §44 笔记【更多】菜单：四状态矩阵（2026-11-05）
+        #   顺序固定为 加密/解密-移动到-复制到-历史版本-删除-下载-导出长图-分享链接；
+        #   除首项外每项一条分隔带；最小宽度 140px。
+        #   ① 未加密：完整菜单，首项【加密】；
+        #   ② 加密未解锁：仅【解密】，右上角【查看】；
+        #   ③ 加密已解锁：完整菜单，首项【解密】，历史/分享置灰（后端不支持）；
+        #   ④ 两条解密路径（未解锁/已解锁）后都恢复未加密完整菜单。
+        # -------------------------------------------------------------------
+        print("\n[E2E] §44 笔记更多菜单四状态矩阵 ...")
+        try:
+            def open_probe_note():
+                page.goto(f"{http_base}/", wait_until="networkidle")
+                wait(600)
+                page.locator('.note-item', has_text="§44 菜单门禁").first.click()
+                page.wait_for_selector('[aria-label="更多操作"]', timeout=15000)
+                wait(400)
+
+            def header_state():
+                return page.evaluate("""() => {
+                  const vis = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+                  const btns = [...document.querySelectorAll('.view-actions .el-button')]
+                    .filter(vis).map(el => el.innerText.trim()).filter(Boolean);
+                  return {buttons: btns, hasMore: !!document.querySelector('[aria-label="更多操作"]')};
+                }""")
+
+            def read_note_menu():
+                page.click('.more-btn')
+                wait(500)
+                return page.evaluate("""() => {
+                  const vis = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+                  const popper = [...document.querySelectorAll('.el-dropdown__popper')].find(vis);
+                  if (!popper) return null;
+                  const menu = popper.querySelector('.el-dropdown-menu');
+                  if (!menu) return null;
+                  const children = [...menu.children];
+                  const items = children.filter(el => el.classList.contains('el-dropdown-menu__item'));
+                  const dividers = children.filter(el => el.classList.contains('el-dropdown-menu__item--divided'));
+                  const mr = menu.getBoundingClientRect();
+                  const pr = popper.getBoundingClientRect();
+                  const btn = document.querySelector('[aria-label="更多操作"]').getBoundingClientRect();
+                  const gapsOk = items.every((el, i) => {
+                    if (i === 0) return true;
+                    const prev = items[i - 1];
+                    const between = children.slice(children.indexOf(prev) + 1, children.indexOf(el));
+                    return between.length === 1 && between[0].classList.contains('el-dropdown-menu__item--divided');
+                  });
+                  return {
+                    labels: items.map(el => el.innerText.trim()),
+                    items: items.map(el => ({
+                      label: el.innerText.trim(),
+                      disabled: el.classList.contains('is-disabled'),
+                      title: el.getAttribute('title') || ''
+                    })),
+                    itemCount: items.length,
+                    dividerCount: dividers.length,
+                    menuW: +mr.width.toFixed(1),
+                    itemH: items.length ? +items[0].getBoundingClientRect().height.toFixed(1) : 0,
+                    rightAligned: Math.abs(pr.right - btn.right) <= 2,
+                    gapsOk
+                  };
+                }""")
+
+            def item_map(menu):
+                return {x["label"]: x for x in (menu or {}).get("items", [])}
+
+            def submit_pwd(pwd):
+                page.wait_for_selector('.el-overlay input[type="password"]', timeout=10000)
+                page.locator('.el-overlay input[type="password"]').first.fill(pwd)
+                page.locator('.el-overlay button:has-text("确认")').last.click()
+                wait(1500)
+
+            r = page.request.post(f"{http_base}/api/notes",
+                                  data={"title": "§44 菜单门禁", "content": "<p>menu</p>"})
+            nid = r.json().get("id") if r.ok else None
+            t("§44.0 探针笔记创建成功", r.ok and nid is not None, f"status={r.status}")
+            expect_full = ["加密", "移动到", "复制到", "历史版本", "删除", "下载", "导出长图", "分享链接"]
+
+            # ① 未加密：完整菜单，全部可用
+            open_probe_note()
+            full = read_note_menu()
+            full_hdr = header_state()
+            t(f"§44.1 未加密菜单顺序正确（{full and full['labels']}）",
+              bool(full) and full["labels"] == expect_full)
+            t("§44.2 未加密菜单 8 项 7 分隔符、无贴死项",
+              bool(full) and full["itemCount"] == 8 and full["dividerCount"] == 7 and full["gapsOk"])
+            t(f"§44.3 菜单最小宽度 140px（实测 {full and full['menuW']}）",
+              bool(full) and 139 <= full["menuW"] <= 141)
+            t(f"§44.4 菜单项行高 32px（实测 {full and full['itemH']}）",
+              bool(full) and 31 <= full["itemH"] <= 33)
+            t("§44.5 弹层右缘对齐【更多】按钮（bottom-end）", bool(full) and full["rightAligned"])
+            t(f"§44.6 未加密右上角为【编辑】+菜单（{full_hdr['buttons']}）",
+              full_hdr["hasMore"] and "编辑" in full_hdr["buttons"] and "查看" not in full_hdr["buttons"])
+            t("§44.7 未加密菜单无置灰项",
+              bool(full) and all(not x["disabled"] for x in full["items"]))
+            page.keyboard.press("Escape")
+            wait(300)
+
+            # ② 加密未解锁：仅【解密】，右上角【查看】
+            r = page.request.put(f"{http_base}/api/notes/{nid}/encrypt",
+                                 data={"password": "Menu#12345", "confirm_password": "Menu#12345"})
+            t("§44.8 探针笔记加密成功", r.ok, f"status={r.status}")
+            open_probe_note()
+            locked = read_note_menu()
+            locked_hdr = header_state()
+            t(f"§44.9 加密未解锁仅显示【解密】（{locked and locked['labels']}）",
+              bool(locked) and locked["labels"] == ["解密"])
+            t("§44.10 加密未解锁仅 1 项且无分隔符",
+              bool(locked) and locked["itemCount"] == 1 and locked["dividerCount"] == 0)
+            t(f"§44.11 加密未解锁右上角为【查看】+菜单（{locked_hdr['buttons']}）",
+              locked_hdr["hasMore"] and "查看" in locked_hdr["buttons"] and "编辑" not in locked_hdr["buttons"])
+            page.keyboard.press("Escape")
+            wait(300)
+
+            # ③ 输入查看密码解锁：完整菜单，首项【解密】，历史/分享置灰
+            page.locator('.view-actions button:has-text("查看")').first.click()
+            submit_pwd("Menu#12345")
+            unlocked_hdr = header_state()
+            unlocked = read_note_menu()
+            unlocked_expect = ["解密", "移动到", "复制到", "历史版本", "删除", "下载", "导出长图", "分享链接"]
+            um = item_map(unlocked)
+            t(f"§44.12 解锁后菜单顺序正确（{unlocked and unlocked['labels']}）",
+              bool(unlocked) and unlocked["labels"] == unlocked_expect)
+            t("§44.13 解锁后 8 项 7 分隔符、无贴死项",
+              bool(unlocked) and unlocked["itemCount"] == 8 and unlocked["dividerCount"] == 7 and unlocked["gapsOk"])
+            t(f"§44.14 解锁后右上角为【编辑】+菜单（{unlocked_hdr['buttons']}）",
+              unlocked_hdr["hasMore"] and "编辑" in unlocked_hdr["buttons"] and "查看" not in unlocked_hdr["buttons"])
+            t("§44.15 解锁后历史版本/分享链接置灰并提示解密后可用",
+              bool(unlocked) and um.get("历史版本", {}).get("disabled") is True
+              and um.get("历史版本", {}).get("title") == "解密后可用"
+              and um.get("分享链接", {}).get("disabled") is True
+              and um.get("分享链接", {}).get("title") == "解密后可用")
+            t("§44.16 解锁后其余 6 项保持可用",
+              bool(unlocked) and all(not um.get(k, {}).get("disabled", True)
+                                     for k in ["解密", "移动到", "复制到", "删除", "下载", "导出长图"]))
+            page.keyboard.press("Escape")
+            wait(300)
+
+            # ③-b 解锁后下载真可用（不是只显示按钮）
+            try:
+                page.click('.more-btn')
+                wait(400)
+                with page.expect_download(timeout=15000) as dl_info:
+                    page.locator('.el-dropdown__popper:visible .el-dropdown-menu__item', has_text="下载").first.click()
+                dl = dl_info.value
+                t(f"§44.17 解锁后下载可用（{dl.suggested_filename}）",
+                  dl.suggested_filename.endswith(".md"))
+            except Exception as dl_ex:
+                t("§44.17 解锁后下载可用", False, str(dl_ex))
+            wait(400)
+
+            # ④ 已解锁状态下点【解密】：立即恢复未加密完整菜单
+            page.click('.more-btn')
+            wait(400)
+            page.locator('.el-dropdown__popper:visible .el-dropdown-menu__item', has_text="解密").first.click()
+            submit_pwd("Menu#12345")
+            wait(800)
+            decrypted = read_note_menu()
+            decrypted_hdr = header_state()
+            dm = item_map(decrypted)
+            t(f"§44.18 已解锁路径解密后首项恢复【加密】（{decrypted and decrypted['labels'][:1]}）",
+              bool(decrypted) and decrypted["labels"] == expect_full)
+            t("§44.19 已解锁路径解密后全部按钮可用",
+              bool(decrypted) and all(not x["disabled"] for x in decrypted["items"]))
+            t(f"§44.20 已解锁路径解密后右上角仍为【编辑】（{decrypted_hdr['buttons']}）",
+              decrypted_hdr["hasMore"] and "编辑" in decrypted_hdr["buttons"])
+            page.keyboard.press("Escape")
+            wait(300)
+
+            # ⑤ 未解锁状态下点【解密】：同样立即恢复未加密完整菜单
+            r = page.request.put(f"{http_base}/api/notes/{nid}/encrypt",
+                                 data={"password": "Menu#12345", "confirm_password": "Menu#12345"})
+            open_probe_note()
+            page.click('.more-btn')
+            wait(400)
+            page.locator('.el-dropdown__popper:visible .el-dropdown-menu__item', has_text="解密").first.click()
+            submit_pwd("Menu#12345")
+            wait(800)
+            decrypted2 = read_note_menu()
+            decrypted2_hdr = header_state()
+            t(f"§44.21 未解锁路径解密后首项恢复【加密】（{decrypted2 and decrypted2['labels'][:1]}）",
+              bool(decrypted2) and decrypted2["labels"] == expect_full)
+            t("§44.22 未解锁路径解密后全部按钮可用",
+              bool(decrypted2) and all(not x["disabled"] for x in decrypted2["items"]))
+            t(f"§44.23 未解锁路径解密后右上角为【编辑】（{decrypted2_hdr['buttons']}）",
+              decrypted2_hdr["hasMore"] and "编辑" in decrypted2_hdr["buttons"])
+            page.keyboard.press("Escape")
+            wait(300)
+        except Exception as ex:
+            t(f"§44 笔记更多菜单异常: {ex}", False)
 
         page.close()
         browser.close()

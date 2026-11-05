@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.6.2
+
+- Note menu UX: fixed item order and a 140px minimum width; encrypted notes show only "Decrypt" until the view password is entered, then the full menu (History / Share are disabled with a "decrypt first" hint).
+- History retention is configurable in System Config → All Configs: max versions per note (0 = stop creating new history), retention days, and a global size cap. The database is the runtime source; environment variables only seed the first creation. Per-note trimming happens on every save, and config changes trigger an asynchronous cleanup.
+- All-config page copy cleanup: removed version/ticket references, renamed the legacy flag key, and removed the obsolete `allow_external_images` key. Existing databases are refreshed on startup.
+- No schema changes, no new dependencies.
+
 ## 2.6.1
 
 - Upgrade/restart hardening: `stop` now sweeps every leftover process by the app binary path (not just the pidfile PID), waits for exit and removes a stale `app.sock`; `start` clears the socket first and fails closed if the port is already served by an untracked instance.

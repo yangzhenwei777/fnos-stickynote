@@ -137,7 +137,7 @@ func addNoteUploadsFK() error {
 	}
 
 	// 6. 旗标
-	if _, err := tx.Exec("INSERT INTO configs (key, value, description) VALUES ('note_uploads_fk_added', 'true', 'note_uploads FK 已添加（v21.71）') ON CONFLICT(key) DO UPDATE SET value = 'true'"); err != nil {
+	if _, err := tx.Exec("INSERT INTO configs (key, value, description) VALUES ('note_uploads_fk_added', 'true', ?) ON CONFLICT(key) DO UPDATE SET value = 'true'", ConfigDescription("note_uploads_fk_added")); err != nil {
 		return fmt.Errorf("write note_uploads_fk_added flag: %w", err)
 	}
 	return tx.Commit()

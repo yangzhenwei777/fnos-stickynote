@@ -128,10 +128,10 @@ func BackfillUploads(uploadDir string) error {
 
 	// 4. 旗标：v21.68 P1-03 + v21.69 P1-03——回填标记或清理任一失败都写 partial（下次启动重试），全部成功才写 true
 	flagValue := "true"
-	desc := "uploads 存量回填与孤儿清理已完成（v18.5）"
+	desc := ConfigDescription("uploads_backfilled")
 	if backfillFailed > 0 || cleanupFailed > 0 {
 		flagValue = "partial"
-		desc = "uploads 存量处理部分失败，待下次启动重试"
+		desc = uploadsBackfilledPartialDesc
 		logger.Error("uploads 存量处理：回填标记失败 %d 个、孤儿清理失败 %d 个，标记 partial 待下次重试", backfillFailed, cleanupFailed)
 	}
 	if _, err := DB.Exec(

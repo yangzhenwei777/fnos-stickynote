@@ -188,3 +188,116 @@ func TestPermanentDeleteRemovesHistory(t *testing.T) {
 		t.Fatalf("history should be removed with note, got %d", got)
 	}
 }
+
+func TestGetHistoryConfigDefaultsAndOverride(t *testing.T) {
+	cleanup := setupQuotaDB(t)
+	defer cleanup()
+
+	maxPerNote, days, totalBytes := GetHistoryConfig()
+	if maxPerNote != DefaultHistoryMaxPerNote || days != DefaultHistoryRetentionDays || totalBytes != int64(DefaultHistoryMaxTotalMB)*1024*1024 {
+		t.Fatalf("defaults = %d/%d/%d", maxPerNote, days, totalBytes)
+	}
+	for key, value := range map[string]string{
+		"history_max_per_note":   "10",
+		"history_retention_days": "30",
+		"history_max_total_mb":   "128",
+	} {
+		if err := SetConfig(key, value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	maxPerNote, days, totalBytes = GetHistoryConfig()
+	if maxPerNote != 10 || days != 30 || totalBytes != 128*1024*1024 {
+		t.Fatalf("override = %d/%d/%d", maxPerNote, days, totalBytes)
+	}
+	if err := SetConfig("history_max_per_note", "0"); err != nil {
+		t.Fatal(err)
+	}
+	if maxPerNote, _, _ = GetHistoryConfig(); maxPerNote != 0 {
+		t.Fatalf("zero should be preserved, got %d", maxPerNote)
+	}
+}
+
+func TestGetHistoryConfigInvalidFallback(t *testing.T) {
+	cleanup := setupQuotaDB(t)
+	defer cleanup()
+
+	for key, value := range map[string]string{
+		"history_max_per_note":   "abc",
+		"history_retention_days": "0",
+		"history_max_total_mb":   "-1",
+	} {
+		if err := SetConfig(key, value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	maxPerNote, days, totalBytes := GetHistoryConfig()
+	if maxPerNote != DefaultHistoryMaxPerNote || days != DefaultHistoryRetentionDays || totalBytes != int64(DefaultHistoryMaxTotalMB)*1024*1024 {
+		t.Fatalf("invalid values should fall back to defaults, got %d/%d/%d", maxPerNote, days, totalBytes)
+	}
+}
+
+func TestCaptureNoteHistoryDisabledWhenZero(t *testing.T) {
+	cleanup := setupQuotaDB(t)
+	defer cleanup()
+
+	uid := createUserForTest(t, "history_zero")
+	note, err := CreateNote(uid, "关闭历史", "<p>v1</p>", "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := SetConfig("history_max_per_note", "0"); err != nil {
+		t.Fatal(err)
+	}
+	ok, err := CaptureNoteHistory(note.ID, uid, HistorySourceUser)
+	if err != nil || ok {
+		t.Fatalf("capture with max=0: ok=%v err=%v", ok, err)
+	}
+	if got := historyCount(t, note.ID); got != 0 {
+		t.Fatalf("history count=%d want 0", got)
+	}
+}
+
+func TestCaptureNoteHistoryPrunesPerNote(t *testing.T) {
+	cleanup := setupQuotaDB(t)
+	defer cleanup()
+
+	uid := createUserForTest(t, "history_prune")
+	note, err := CreateNote(uid, "按篇裁剪", "<p>v1</p>", "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := SetConfig("history_max_per_note", "2"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := CaptureNoteHistory(note.ID, uid, HistorySourceUser); err != nil {
+		t.Fatal(err)
+	}
+	for version, content := range []string{"<p>v2</p>", "<p>v3</p>"} {
+		if err := UpdateNote(note.ID, uid, "按篇裁剪", content, "", int64(version+1)); err != nil {
+			t.Fatalf("update v%d: %v", version+2, err)
+		}
+		if _, err := CaptureNoteHistory(note.ID, uid, HistorySourceUser); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := historyCount(t, note.ID); got != 2 {
+		t.Fatalf("history count=%d want 2", got)
+	}
+	rows, err := database.DB.Query("SELECT content FROM note_history WHERE note_id = ? ORDER BY id", note.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var got []string
+	for rows.Next() {
+		var content string
+		if err := rows.Scan(&content); err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, content)
+	}
+	if len(got) != 2 || got[0] != "<p>v2</p>" || got[1] != "<p>v3</p>" {
+		t.Fatalf("remaining history = %v, want [v2 v3]", got)
+	}
+}

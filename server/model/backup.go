@@ -325,7 +325,7 @@ func CountBackupPlacements(backupID string) (int, error) {
 // 启动跑一次（由 cmd/server 在调度器启动前调用，故无并发在途备份被误删）。
 // 返回清理行数；旗标已置位则直接返回 (0, nil) 不再执行。
 func PurgeOrphanBackupSnapshotsOnce() (int, error) {
-	const flagKey = "orphan_snapshots_purged_v170"
+	const flagKey = "orphan_snapshots_purged"
 	var flag string
 	if err := database.DB.QueryRow("SELECT value FROM configs WHERE key=?", flagKey).Scan(&flag); err == nil && flag == "true" {
 		return 0, nil // 已清理过
@@ -337,8 +337,8 @@ func PurgeOrphanBackupSnapshotsOnce() (int, error) {
 	}
 	n, _ := res.RowsAffected()
 	if _, serr := database.DB.Exec(`INSERT INTO configs (key, value, description)
-		VALUES (?, 'true', '存量孤儿备份快照行一次性清理已完成（v21.130）')
-		ON CONFLICT(key) DO UPDATE SET value='true'`, flagKey); serr != nil {
+		VALUES (?, 'true', ?)
+		ON CONFLICT(key) DO UPDATE SET value='true'`, flagKey, database.ConfigDescription(flagKey)); serr != nil {
 		return int(n), serr
 	}
 	return int(n), nil

@@ -47,6 +47,9 @@ func UpdateConfig(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新配置失败"})
 		return
 	}
+	if isHistoryConfigKey(key) {
+		model.NotifyHistoryConfigChanged()
+	}
 
 	logger.AuditEvent("config_update", c.GetString("username"), c.ClientIP(), "success", key+" = "+req.Value)
 	model.LogAdminAction(c.GetInt64("userID"), c.GetString("username"), "修改配置", key, "", c.ClientIP())
@@ -76,10 +79,21 @@ func isConfigKeyAllowed(key string) bool {
 		"max_note_content_kb":     true,
 		"trash_retention_days":    true,
 		"allow_register":          true, // 注册开关（v20.8 曾误写 register_enabled 幽灵键导致开关失效）
-		"share_enabled":           true, // 2.6.0 分享链接总开关（true/false，默认 true）
-		"site_title":              true, // F-6（v1.0.134 审计）：应用标题；本就是 /public-config 下发的展示型配置，无敏感面
+		"share_enabled":           true, // 分享链接总开关（true/false，默认 true）
+		"site_title":              true, // 应用标题；本就是 /public-config 下发的展示型配置，无敏感面
+		"history_max_per_note":    true, // 每篇历史保留份数（0=停止生成新历史）
+		"history_retention_days":  true, // 历史保留天数
+		"history_max_total_mb":    true, // 历史全库总容量上限（MB）
 	}
 	return allowed[key]
+}
+
+func isHistoryConfigKey(key string) bool {
+	switch key {
+	case "history_max_per_note", "history_retention_days", "history_max_total_mb":
+		return true
+	}
+	return false
 }
 
 // validateConfigValue 校验可编辑配置的值范围（v21.68 P2-06）。
@@ -113,6 +127,21 @@ func validateConfigValue(key, value string) error {
 	case "share_enabled":
 		if v != "true" && v != "false" {
 			return fmt.Errorf("share_enabled 必须是 true 或 false")
+		}
+	case "history_max_per_note":
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 || n > 1000 {
+			return fmt.Errorf("history_max_per_note 必须是 0~1000 的整数（0=停止生成新历史）")
+		}
+	case "history_retention_days":
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 || n > 3650 {
+			return fmt.Errorf("history_retention_days 必须是 1~3650 的整数")
+		}
+	case "history_max_total_mb":
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 64 || n > 102400 {
+			return fmt.Errorf("history_max_total_mb 必须是 64~102400 的整数")
 		}
 	case "site_title":
 		// F-6：应用标题校验。空标题会让页头/登录页标题塌陷；超长破坏布局；
