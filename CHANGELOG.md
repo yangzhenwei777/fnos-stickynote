@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.6.3
+
+- Reading layout: the title bar stays pinned; content and the right outline scroll independently; the outline remains visible when content reaches the bottom.
+- Wheel routing follows the pointer: content scrolls content, outline scrolls outline. When the outline has no overflow or reaches its top/bottom, the wheel is ignored and does not move the content.
+- The outline scrollbar appears while scrolling and hides 3 seconds after scrolling stops.
+- No schema changes, no new dependencies.
+
 ## 2.6.2
 
 - Note menu UX: fixed item order and a 140px minimum width; encrypted notes show only "Decrypt" until the view password is entered, then the full menu (History / Share are disabled with a "decrypt first" hint).

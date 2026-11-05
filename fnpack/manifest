@@ -1,5 +1,5 @@
 appname               = stickynote
-version               = 2.6.2
+version               = 2.6.3
 display_name          = Sticky note
 platform              = x86
 # checksum 字段由 fnpack build 自动计算注入，请勿手动填写
@@ -11,6 +11,7 @@ desktop_uidir         = ui
 desktop_applaunchname = stickynote.Application
 desc                  = Sticky note 便签应用
 changelog             = """
+2.6.3 — 阅读态布局优化：标题栏固定、正文/大纲双滚动、滚轮按指针分流；大纲不足一屏或到边界不带动正文；大纲滚动条滚动时显示、停止 3 秒后隐藏。零 schema、零新增依赖。
 2.6.2 — 笔记菜单体验 + 历史版本配置：菜单顺序/140px/加密四态修复；历史三项配置进入【系统配置 → 全部配置】（0=停止生成新历史）；全部配置页文案去版本号/工单号。零 schema、零新增依赖。
 2.6.1 — 升级/重启加固：停止时按应用二进制路径清扫全部残留实例并清理 stale app.sock；启动前清理 socket，端口被未登记实例占用时 fail-closed；新增 VM 网关验收断言。Docker 多架构改原生构建 + 交叉编译。零 schema、零新增依赖。
 2.6.0 — 分享链接（非加密笔记）：【更多 → 分享链接】生成只读公开链接，token 仅创建时返回一次（库中只存 SHA-256 哈希），有效期 1/7/30 天，可随时撤销；公开页无需登录、noindex/no-store；加密笔记禁止分享；全局开关 share_enabled；创建/撤销审计；永久删除/清空回收站/删用户级联。零新增依赖。

@@ -293,7 +293,10 @@
             <aside
               v-if="!isMobile && noteOutline.length >= 2"
               class="note-outline"
+              :class="{ 'is-scrolling': outlineScrolling }"
               aria-label="文章大纲"
+              @wheel="onOutlineWheel"
+              @scroll.passive="onOutlineScroll"
             >
               <div class="note-outline-title">
                 大纲
@@ -514,7 +517,7 @@ const {
   pwdPlaceholder, pwdInput, pwdConfirm, pwdLoading,
   saveStatus, markDirty, syncBaselineContent,
   sanitizedContent, previewSanitizedContent,
-  noteOutline, scrollToOutlineHeading,
+  noteOutline, scrollToOutlineHeading, outlineScrolling, onOutlineScroll, onOutlineWheel,
   viewContentRef, notePreviewContentRef, noteHighlight,
   createNewNote, handleImportFile, selectNote, enterEditMode, togglePreview, quickEditNote,
   handleViewAction, showPasswordDialog,

@@ -14,7 +14,7 @@ import { useNoteSearch } from '@/composables/useNoteSearch'
 import { useNoteEncrypt } from '@/composables/useNoteEncrypt'
 import { useAutoSave } from '@/composables/useAutoSave'
 import { useNoteImport } from '@/composables/useNoteImport'
-import { extractNoteOutline } from '@/composables/useNoteOutline'
+import { extractNoteOutline, shouldBlockOutlineWheel } from '@/composables/useNoteOutline'
 import { useFolderStore } from '@/stores/folder'
 import { useFolderSecurityStore } from '@/stores/folderSecurity'
 import { stripHtml, toggleTaskItemInHtml } from '@/utils/note'
@@ -148,6 +148,27 @@ function scrollToOutlineHeading(index) {
   const headings = root.querySelectorAll('h1, h2, h3')
   const target = headings[index]
   if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
+// 2.6.3 阅读态双滚动：大纲滚动条滚动时显示，停止 3 秒后隐藏。
+const outlineScrolling = ref(false)
+let outlineScrollTimer = null
+
+function onOutlineScroll() {
+  outlineScrolling.value = true
+  if (outlineScrollTimer) clearTimeout(outlineScrollTimer)
+  outlineScrollTimer = setTimeout(() => {
+    outlineScrolling.value = false
+    outlineScrollTimer = null
+  }, 3000)
+}
+
+function onOutlineWheel(e) {
+  const el = e.currentTarget
+  if (!el) return
+  if (shouldBlockOutlineWheel(e.deltaY, el.scrollTop, el.clientHeight, el.scrollHeight)) {
+    e.preventDefault()
+  }
 }
 
 // v21.220：预览态代码块复制按钮——查看态（.view-content）与编辑内预览（.note-preview-content）
@@ -541,6 +562,7 @@ onUnmounted(() => {
   window.removeEventListener('beforeunload', handleBeforeUnload)
   if (stopAutoContrast) { stopAutoContrast(); stopAutoContrast = null }
   if (stopSyncRefresh) { stopSyncRefresh(); stopSyncRefresh = null }
+  if (outlineScrollTimer) { clearTimeout(outlineScrollTimer); outlineScrollTimer = null }
   cleanupTimers()
 })
 
@@ -642,6 +664,8 @@ watch(() => folderStore.homeTick, async () => {
 
 watch(() => currentNote.value?.id, () => {
   resetOnNoteChange()
+  outlineScrolling.value = false
+  if (outlineScrollTimer) { clearTimeout(outlineScrollTimer); outlineScrollTimer = null }
 })
 
   return {
@@ -659,7 +683,7 @@ watch(() => currentNote.value?.id, () => {
     saveStatus, markDirty, saveBeforeSwitch, checkDraft, clearDraft, clearSaveState, saveConflict,
     syncBaselineContent, resetBaseline, handleKeydown, handleBeforeUnload, cleanupTimers,
     fileInput, sanitizedContent, previewSanitizedContent,
-    noteOutline, scrollToOutlineHeading,
+    noteOutline, scrollToOutlineHeading, outlineScrolling, onOutlineScroll, onOutlineWheel,
     historyDialogVisible, onHistoryRestored,
     shareDialogVisible,
     viewContentRef, notePreviewContentRef, noteHighlight,

@@ -1561,6 +1561,164 @@ def main():
         except Exception as ex:
             t(f"§44 笔记更多菜单异常: {ex}", False)
 
+        # -------------------------------------------------------------------
+        # §45 2.6.3 阅读态布局：标题固定 + 正文/大纲双滚动 + 滚轮分流
+        # -------------------------------------------------------------------
+        print("\n[E2E] §45 阅读态布局与滚轮分流 ...")
+        try:
+            long_body = "".join(
+                f"<h2>章节{i}</h2><p>{'内容' * 80}</p>" for i in range(1, 31)
+            )
+            r = page.request.post(f"{http_base}/api/notes",
+                                  data={"title": "§45 长文大纲", "content": long_body})
+            t("§45.0 长文笔记创建成功", r.ok, f"status={r.status}")
+
+            short_body = "<h1>短纲一</h1><p>导语</p><h2>短纲二</h2>" + "".join(
+                f"<p>{'正文' * 100}</p>" for _ in range(30)
+            )
+            r2 = page.request.post(f"{http_base}/api/notes",
+                                   data={"title": "§45 短纲长文", "content": short_body})
+            t("§45.0b 短纲笔记创建成功", r2.ok, f"status={r2.status}")
+
+            page.goto(f"{http_base}/", wait_until="networkidle")
+            wait(500)
+            page.locator('.note-item', has_text="§45 长文大纲").first.click()
+            page.wait_for_selector('.note-outline')
+            wait(500)
+
+            geo = page.evaluate("""() => {
+              const content = document.querySelector('.view-content')
+              const outline = document.querySelector('.note-outline')
+              const header = document.querySelector('.view-header')
+              const c = content.getBoundingClientRect(), o = outline.getBoundingClientRect(), h = header.getBoundingClientRect()
+              return {
+                cw: c.width, ch: c.height, cx: c.x, cy: c.y,
+                ow: o.width, oh: o.height, ox: o.x, oy: o.y,
+                hy: h.y, hh: h.height,
+                contentCanScroll: content.scrollHeight > content.clientHeight,
+                outlineCanScroll: outline.scrollHeight > outline.clientHeight,
+                vw: innerWidth, vh: innerHeight
+              }
+            }""")
+            t("§45.1 正文与大纲均形成独立滚动区",
+              geo["contentCanScroll"] and geo["outlineCanScroll"], geo)
+            t("§45.2 标题、正文、大纲三栏同时可见",
+              geo["hh"] > 0 and geo["ch"] > 0 and geo["oh"] > 0, geo)
+
+            # 指针在正文上：只滚正文，标题与大纲不位移
+            page.mouse.move(geo["cx"] + geo["cw"] / 2, geo["cy"] + geo["ch"] / 2)
+            page.mouse.wheel(0, 600)
+            wait(500)
+            st = page.evaluate("""() => ({
+              content: document.querySelector('.view-content').scrollTop,
+              outline: document.querySelector('.note-outline').scrollTop,
+              headerY: document.querySelector('.view-header').getBoundingClientRect().y,
+              outlineY: document.querySelector('.note-outline').getBoundingClientRect().y
+            })""")
+            t("§45.3 指针在正文：只滚正文", st["content"] > 0 and st["outline"] == 0, st)
+            t("§45.4 正文滚动时标题栏固定", abs(st["headerY"] - geo["hy"]) <= 1, st)
+            t("§45.5 正文滚动时大纲列固定", abs(st["outlineY"] - geo["oy"]) <= 1, st)
+
+            # 正文滚到底：标题栏与大纲仍可见
+            page.evaluate("""() => { const el = document.querySelector('.view-content'); el.scrollTop = el.scrollHeight }""")
+            wait(400)
+            bottom = page.evaluate("""() => {
+              const content = document.querySelector('.view-content')
+              const outline = document.querySelector('.note-outline')
+              const header = document.querySelector('.view-header')
+              const o = outline.getBoundingClientRect(), h = header.getBoundingClientRect()
+              return {
+                contentTop: content.scrollTop,
+                outlineVisible: o.bottom > 0 && o.top < innerHeight && o.height > 0,
+                headerVisible: h.bottom > 0 && h.top < innerHeight && h.height > 0,
+                contentAtBottom: content.scrollTop + content.clientHeight >= content.scrollHeight - 1
+              }
+            }""")
+            t("§45.6 正文到底后大纲仍完整可见",
+              bottom["contentAtBottom"] and bottom["outlineVisible"], bottom)
+            t("§45.7 正文到底后标题栏仍可见", bottom["headerVisible"], bottom)
+
+            # 指针在大纲上：只滚大纲，正文不动
+            page.mouse.move(geo["ox"] + geo["ow"] / 2, geo["oy"] + geo["oh"] / 2)
+            page.mouse.wheel(0, 400)
+            wait(500)
+            os_state = page.evaluate("""() => ({
+              content: document.querySelector('.view-content').scrollTop,
+              outline: document.querySelector('.note-outline').scrollTop,
+              className: document.querySelector('.note-outline').className
+            })""")
+            t("§45.8 指针在大纲：只滚大纲",
+              os_state["outline"] > 0 and os_state["content"] == bottom["contentTop"], os_state)
+            t("§45.9 大纲滚动时显示滚动条类", "is-scrolling" in os_state["className"], os_state["className"])
+            wait(3300)
+            cls = page.evaluate("() => document.querySelector('.note-outline').className")
+            t("§45.10 大纲停止滚动 3 秒后隐藏滚动条", "is-scrolling" not in cls, cls)
+
+            # 大纲到底：继续向下滚不带动正文
+            page.evaluate("""() => { const el = document.querySelector('.note-outline'); el.scrollTop = el.scrollHeight }""")
+            wait(300)
+            before = page.evaluate("""() => ({
+              content: document.querySelector('.view-content').scrollTop,
+              outline: document.querySelector('.note-outline').scrollTop
+            })""")
+            page.mouse.move(geo["ox"] + geo["ow"] / 2, geo["oy"] + geo["oh"] / 2)
+            page.mouse.wheel(0, 800)
+            wait(500)
+            after = page.evaluate("""() => ({
+              content: document.querySelector('.view-content').scrollTop,
+              outline: document.querySelector('.note-outline').scrollTop
+            })""")
+            t("§45.11 大纲到底后继续滚动不带动正文",
+              after["content"] == before["content"] and after["outline"] == before["outline"],
+              {"before": before, "after": after})
+
+            # 点击大纲跳转：正文滚动且标题不被固定栏遮挡
+            page.locator('.note-outline-item').nth(20).click()
+            wait(800)
+            jump = page.evaluate("""() => {
+              const content = document.querySelector('.view-content')
+              const items = document.querySelectorAll('.note-outline-item')
+              const text = items[20].textContent.trim()
+              const heading = Array.from(content.querySelectorAll('h1,h2,h3'))
+                .find(x => x.textContent.trim() === text)
+              const c = content.getBoundingClientRect(), h = heading.getBoundingClientRect()
+              return {scrollTop: content.scrollTop, headingTop: h.top, contentTop: c.top, ok: h.top >= c.top - 1}
+            }""")
+            t("§45.12 点击大纲跳转且标题未被固定栏遮挡",
+              jump["scrollTop"] > 0 and jump["ok"], jump)
+
+            # 短大纲 + 长正文：指针在大纲上滚轮不生效
+            page.goto(f"{http_base}/", wait_until="networkidle")
+            wait(500)
+            page.locator('.note-item', has_text="§45 短纲长文").first.click()
+            page.wait_for_selector('.view-content')
+            wait(400)
+            short_geo = page.evaluate("""() => {
+              const content = document.querySelector('.view-content')
+              const outline = document.querySelector('.note-outline')
+              const c = content.getBoundingClientRect()
+              const o = outline ? outline.getBoundingClientRect() : null
+              return {
+                contentCanScroll: content.scrollHeight > content.clientHeight,
+                outlineCanScroll: outline ? outline.scrollHeight > outline.clientHeight : null,
+                cx: c.x, cy: c.y, cw: c.width, ch: c.height,
+                ox: o ? o.x : 0, oy: o ? o.y : 0, ow: o ? o.width : 0, oh: o ? o.height : 0,
+                outlineVisible: !!outline
+              }
+            }""")
+            t("§45.13 短大纲存在且不可滚动、正文可滚动",
+              short_geo["outlineVisible"] and short_geo["outlineCanScroll"] is False
+              and short_geo["contentCanScroll"], short_geo)
+            page.evaluate("() => { document.querySelector('.view-content').scrollTop = 0 }")
+            wait(200)
+            page.mouse.move(short_geo["ox"] + short_geo["ow"] / 2, short_geo["oy"] + short_geo["oh"] / 2)
+            page.mouse.wheel(0, 600)
+            wait(400)
+            sc = page.evaluate("() => document.querySelector('.view-content').scrollTop")
+            t("§45.14 短大纲上滚轮不生效且不带动正文", sc == 0, sc)
+        except Exception as ex:
+            t(f"§45 阅读态布局与滚轮分流异常: {ex}", False)
+
         page.close()
         browser.close()
 

@@ -615,13 +615,14 @@ html[data-theme="dark"] .clear-tag:hover {
   flex: 1;
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
+  /* 2.6.3 阅读态双滚动：标题栏固定，正文与大纲各自滚动（对齐编辑态结构）。 */
+  overflow: hidden;
   /* v21.45：顶部 24px → 10px，预览操作按钮中心线（10+8+16=34px）与
      左侧 sidebar-header 按钮中心线（v21.207：16+18=34px）水平对齐 */
   /* v2.2.2 R4：左右内边距 40px → 32px，与编辑区/编辑内预览（.editor-content /
      .note-preview-content 均 32px）对齐——此前相差 16px，切换编辑↔查看时正文变窄，
      表格列宽随之变化（用户实测「点左侧笔记后预览窄一点点」） */
-  padding: 10px 32px 24px;
+  padding: 10px 32px 0;
 }
 
 /* v21.23 侧栏收起时：编辑标题栏/查看操作区左移，为「展开笔记列表」按钮让位（按钮占 4~48px） */
@@ -631,6 +632,7 @@ html[data-theme="dark"] .clear-tag:hover {
 }
 
 .view-header {
+  flex-shrink: 0;
   background: var(--bg-primary);
   margin-bottom: 4px;
   /* 顶距 4px：操作按钮中心线（10+4+4+16=34px）与左侧 sidebar-header 按钮中心线对齐
@@ -672,13 +674,16 @@ html[data-theme="dark"] .clear-tag:hover {
   overflow-wrap: anywhere;
   font-size: 16px;
   color: var(--text-primary);
-  padding: 4px 0;
+  /* 2.6.3：正文独立滚动，底部留白从 .note-view 移入本容器。 */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px 0 24px;
 }
 
-/* 2.4.0 阅读态大纲：正文与右侧目录并排，目录 sticky 跟随滚动。 */
+/* 2.4.0 阅读态大纲：正文与右侧目录并排；2.6.3 起目录独立滚动，不再 sticky。 */
 .view-body {
   display: flex;
-  align-items: flex-start;
+  align-items: stretch;
   gap: 24px;
   flex: 1;
   min-height: 0;
@@ -691,12 +696,29 @@ html[data-theme="dark"] .clear-tag:hover {
 
 .note-outline {
   flex: 0 0 190px;
-  position: sticky;
-  top: 8px;
-  max-height: calc(100vh - 220px);
   overflow-y: auto;
-  padding: 4px 0 4px 12px;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding: 4px 0 24px 12px;
   border-left: 1px solid var(--border-color);
+  /* 2.6.3：滚动条滚动时显示，停止 3 秒后隐藏（类由 useNotesView 定时切换）。 */
+  scrollbar-color: transparent transparent;
+}
+
+.note-outline::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  background: transparent;
+  background-clip: padding-box;
+}
+
+.note-outline.is-scrolling {
+  scrollbar-color: var(--scroll-thumb) transparent;
+}
+
+.note-outline.is-scrolling::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  background: var(--scroll-thumb);
+  background-clip: padding-box;
 }
 
 .note-outline-title {
@@ -1072,7 +1094,11 @@ html[data-theme="dark"] .clear-tag:hover {
   }
 
   .note-view {
-    padding: 16px;
+    padding: 16px 16px 0;
+  }
+
+  .view-content {
+    padding-bottom: 16px;
   }
 
   .view-title {
