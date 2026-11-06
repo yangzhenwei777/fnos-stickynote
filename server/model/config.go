@@ -30,6 +30,22 @@ func GetConfig(key string) (string, error) {
 	return value, err
 }
 
+// internalConfigKeys 为「系统内部标记」幂等旗标（一次性迁移的完工标记）。
+// DB 行必须保留（防迁移每次启动重跑），但无管理语义：列表接口不下发（2.6.4），
+// 修改链路本就被 handler 白名单拦截。
+var internalConfigKeys = map[string]bool{
+	"uploads_backfilled":       true,
+	"note_uploads_backfilled":  true,
+	"note_uploads_fk_added":    true,
+	"title_entities_unescaped": true,
+	"orphan_snapshots_purged":  true,
+}
+
+// IsInternalConfigKey 判断 key 是否为系统内部标记旗标。
+func IsInternalConfigKey(key string) bool {
+	return internalConfigKeys[key]
+}
+
 func GetAllConfigs() ([]Config, error) {
 	rows, err := database.DB.Query("SELECT id, key, value, description, updated_at FROM configs ORDER BY key")
 	if err != nil {
@@ -42,6 +58,9 @@ func GetAllConfigs() ([]Config, error) {
 		var c Config
 		if err := rows.Scan(&c.ID, &c.Key, &c.Value, &c.Description, &c.UpdatedAt); err != nil {
 			return nil, err
+		}
+		if internalConfigKeys[c.Key] {
+			continue
 		}
 		configs = append(configs, c)
 	}

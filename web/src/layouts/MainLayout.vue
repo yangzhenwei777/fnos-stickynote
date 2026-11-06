@@ -20,9 +20,12 @@
             class="logo"
             @click="goHome"
           >
-            <div class="logo-icon">
-              <el-icon><Document /></el-icon>
-            </div>
+            <!-- 2.6.4：左上图标换应用图标（原 Element 线型 Document 图标） -->
+            <img
+              class="logo-icon-img"
+              :src="appIconUrl"
+              alt=""
+            >
             <span class="logo-text">{{ config.siteTitle }}</span>
           </div>
         </div>
@@ -206,6 +209,7 @@ const config = useConfigStore() // F-6：页头应用标题读取全局 siteTitl
 
 const user = computed(() => auth.user)
 const isMobile = ref(false)
+const appIconUrl = withBase('/icon-192.png') // 2.6.4：顶栏 LOGO 用应用图标
 
 function checkMobile() {
   isMobile.value = window.innerWidth <= 768
@@ -326,18 +330,13 @@ async function handleUserCmd(cmd) {
   cursor: pointer;
 }
 
-.logo-icon {
+.logo-icon-img {
   width: 36px;
   height: 36px;
-  background: rgba(255, 255, 255, 0.18);
   border-radius: var(--radius-md);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.logo-icon .el-icon {
-  font-size: 20px;
+  display: block;
+  object-fit: cover;
+  flex-shrink: 0;
 }
 
 .logo-text {

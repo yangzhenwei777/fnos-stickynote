@@ -56,6 +56,26 @@ func TestConfigCRUD(t *testing.T) {
 		}
 	})
 
+	t.Run("GetAllConfigs 隐藏内部标记旗标", func(t *testing.T) {
+		// 2.6.4：内部旗标 DB 行保留（迁移幂等依赖），但列表接口不下发
+		if err := SetConfig("title_entities_unescaped", "true"); err != nil {
+			t.Fatal(err)
+		}
+		all, err := GetAllConfigs()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, c := range all {
+			if IsInternalConfigKey(c.Key) {
+				t.Errorf("列表不应含内部旗标: %q", c.Key)
+			}
+		}
+		v, err := GetConfig("title_entities_unescaped")
+		if err != nil || v != "true" {
+			t.Errorf("内部旗标 DB 行必须保留: v=%q err=%v", v, err)
+		}
+	})
+
 	t.Run("GetPublicConfigs 只含公开项", func(t *testing.T) {
 		if err := SetConfig("allow_register", "false"); err != nil {
 			t.Fatal(err)

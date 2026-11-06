@@ -14,9 +14,12 @@
         :title="collapsed ? 'Sticky note' : ''"
         @click="goHome"
       >
-        <div class="sb-logo-icon">
-          <el-icon><Document /></el-icon>
-        </div>
+        <!-- 2.6.4：左上图标换应用图标（原 Element 线型 Document 图标） -->
+        <img
+          class="sb-logo-icon-img"
+          :src="appIconUrl"
+          alt=""
+        >
         <span
           v-if="!collapsed"
           class="sb-logo-text"
@@ -332,6 +335,7 @@ const folderStore = useFolderStore()
 const folderSecurity = useFolderSecurityStore()
 const { isDark, toggleTheme } = useTheme()
 const config = useConfigStore() // F-6：侧栏 LOGO 文字读取全局 siteTitle，随高级设置即时更新
+const appIconUrl = withBase('/icon-192.png') // 2.6.4：侧栏 LOGO 用应用图标
 
 const user = computed(() => auth.user)
 const customFolders = computed(() => folderStore.customFolders)
@@ -498,17 +502,12 @@ onMounted(() => {
   color: var(--primary-color);
 }
 
-.sb-logo-icon {
+.sb-logo-icon-img {
   width: 28px;
   height: 28px;
   border-radius: var(--radius-sm);
-  /* v21.164：去渐变，实心主色（图2 基线：蓝色只用于主要操作与功能图标） */
-  background: var(--primary-color);
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
+  display: block;
+  object-fit: cover;
   flex-shrink: 0;
 }
 

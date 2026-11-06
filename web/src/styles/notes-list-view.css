@@ -2,7 +2,7 @@
    一律以 .notes-list-container 前缀限定作用域——page-title/search-box/create-btn/import-btn/
    empty-container 等类名在 NotesView/Login 等处各有同名定义，禁止去掉前缀。
    原 :deep(X) 已转普通后代选择器；:global(.nl-f-*) 项原样保留。 */
-.notes-list-container .notes-list-container {
+.notes-list-container {
   padding: 24px 32px;
 }
 .notes-list-container .notes-list-header {
@@ -330,8 +330,10 @@
   padding: 24px 0;
 }
 @media (max-width: 768px) {
-.notes-list-container .notes-list-container {
-    padding: 12px;
+/* 2.6.4：修复迁移期误写的双重嵌套选择器（规则从未生效，移动端页边距实际为 0）。
+   移动端左右 16px 页边距 + 顶部 16px 与顶栏拉开距离，底部 12px。 */
+.notes-list-container {
+    padding: 16px 16px 12px;
   }
 .notes-list-container .notes-list-header {
     flex-direction: column;

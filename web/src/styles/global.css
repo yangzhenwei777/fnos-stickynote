@@ -31,6 +31,8 @@
   --shadow-float: 0 6px 20px rgba(15, 23, 42, 0.08);
   --scroll-thumb: #cbd5e1;
   --scroll-thumb-hover: #94a3b8;
+  /* 2.6.4：滚动提示态滑块（列表/正文滚动时淡显、停 3 秒隐藏），比常驻滑块更轻 */
+  --scroll-thumb-fade: rgba(148, 163, 184, 0.45);
   /* v21.164 视觉改版（图1/图2 设计基线）：补齐语义 token。
      --shadow-panel 面板级阴影统一为 none（分区靠细边框，仅浮层保留轻阴影）；
      --bg-hover 统一悬停底纹（冷灰蓝，替代各处 --bg-tertiary 的悬停用法）；
@@ -249,6 +251,19 @@ optgroup {
   scrollbar-width: thin;
 }
 
+/* 2.6.4：移动端（≤768px，与 JS 移动端判定同断点）隐藏全部滚动条——
+   触屏滑动不需要滚动条提示；仅隐藏外观，滚动能力不受影响。 */
+@media (max-width: 768px) {
+  * {
+    scrollbar-width: none !important;
+  }
+
+  ::-webkit-scrollbar {
+    width: 0 !important;
+    height: 0 !important;
+  }
+}
+
 .fade-enter-active,
 .fade-leave-active {
   transition: opacity 0.25s ease;
@@ -313,6 +328,7 @@ html[data-theme="dark"] {
   --shadow-float: 0 6px 20px rgba(0, 0, 0, 0.4);
   --scroll-thumb: #4b5563;
   --scroll-thumb-hover: #6b7280;
+  --scroll-thumb-fade: rgba(107, 114, 128, 0.45);
   /* v21.164 视觉改版：暗色成对补齐（--bg-hover 取比 --bg-primary #1e293b 略亮一档的冷灰蓝） */
   --radius-xs: 2px;
   --radius-sm: 4px;

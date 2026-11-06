@@ -721,6 +721,36 @@ html[data-theme="dark"] .clear-tag:hover {
   background-clip: padding-box;
 }
 
+/* 2.6.3 大纲同款机制推广（2.6.4）：笔记列表 / 查看态正文 / 编辑态内容默认隐藏滚动条，
+   滚动时淡色显示、停止 3 秒后隐藏（is-scrolling 类由 NotesView 的 v-scroll-hint 指令切换）。 */
+.note-list,
+.view-content,
+.editor-content {
+  scrollbar-color: transparent transparent;
+}
+
+.note-list::-webkit-scrollbar-thumb,
+.view-content::-webkit-scrollbar-thumb,
+.editor-content::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  background: transparent;
+  background-clip: padding-box;
+}
+
+.note-list.is-scrolling,
+.view-content.is-scrolling,
+.editor-content.is-scrolling {
+  scrollbar-color: var(--scroll-thumb-fade) transparent;
+}
+
+.note-list.is-scrolling::-webkit-scrollbar-thumb,
+.view-content.is-scrolling::-webkit-scrollbar-thumb,
+.editor-content.is-scrolling::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  background: var(--scroll-thumb-fade);
+  background-clip: padding-box;
+}
+
 .note-outline-title {
   margin-bottom: 6px;
   font-size: 12px;

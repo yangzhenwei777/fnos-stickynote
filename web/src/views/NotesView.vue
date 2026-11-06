@@ -66,6 +66,7 @@
       <!-- 2026-10-15 用户需求：列表默认 20 条 + 触底续载（useNotes 内部三闸门防重） -->
       <div
         ref="noteListRef"
+        v-scroll-hint
         class="note-list"
         @scroll.passive="onListScroll"
       >
@@ -285,6 +286,7 @@
           <div class="view-body">
             <div
               ref="viewContentRef"
+              v-scroll-hint
               class="view-content"
               @click="openImageViewer"
               @change="onPreviewCheckboxToggle"
@@ -350,7 +352,10 @@
           </div>
           <!-- 标签编辑输入框已按需求于前台隐藏（后端 tags 链路保留） -->
 
-          <div class="editor-content">
+          <div
+            v-scroll-hint
+            class="editor-content"
+          >
             <TiptapEditor
               v-if="!previewMode"
               ref="editorRef"
@@ -503,6 +508,26 @@ import NotePasswordDialog from '@/components/NotePasswordDialog.vue'
 import NoteHistoryDialog from '@/components/NoteHistoryDialog.vue'
 import ShareDialog from '@/components/ShareDialog.vue'
 import { useNotesView } from '@/composables/useNotesView'
+
+// 2.6.4：滚动提示指令——滚动时给容器加 is-scrolling（滚动条淡显），停止 3 秒后移除（隐藏）。
+// 与阅读态大纲（useNotesView outlineScrolling）同口径；列表/查看正文/编辑内容三容器复用。
+const vScrollHint = {
+  mounted(el) {
+    let timer = null
+    el._scrollHintHandler = () => {
+      el.classList.add('is-scrolling')
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => {
+        el.classList.remove('is-scrolling')
+        timer = null
+      }, 3000)
+    }
+    el.addEventListener('scroll', el._scrollHintHandler, { passive: true })
+  },
+  unmounted(el) {
+    el.removeEventListener('scroll', el._scrollHintHandler)
+  },
+}
 
 const {
   folderStore, customFolders,

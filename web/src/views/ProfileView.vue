@@ -262,6 +262,8 @@ const activeTab = ref('password')
 @media (max-width: 768px) {
   .profile-container {
     padding: 0;
+    /* 2.6.4：移动端内容区高度=全屏−56px 顶栏；容器仍占 100vh 会恒定多出 56px 假滚动 */
+    min-height: calc(100vh - 56px);
   }
 
   .profile-layout {

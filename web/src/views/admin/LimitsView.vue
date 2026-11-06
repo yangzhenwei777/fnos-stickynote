@@ -110,6 +110,64 @@
           ⚠️ 开启后超期笔记将自动物理删除，<b>不可恢复</b>（每 6 小时检查一次）
         </p>
       </div>
+
+      <!-- 2.6.4：历史版本三配置上卡片页（此前仅「查看全部配置项」可编辑） -->
+      <div class="limit-card">
+        <div class="limit-header">
+          <span class="limit-title">历史版本份数</span>
+        </div>
+        <p class="limit-desc">
+          每篇笔记保留的历史版本份数。设为 0 表示停止生成新历史（已有历史保留）。
+        </p>
+        <div class="limit-value">
+          <span class="current">{{ historyPerNote.value === 0 ? '0 份（已停止生成）' : historyPerNote.value + ' 份' }}</span>
+          <el-button
+            size="small"
+            type="primary"
+            @click="editLimit('history_max_per_note', historyPerNote)"
+          >
+            编辑
+          </el-button>
+        </div>
+      </div>
+
+      <div class="limit-card">
+        <div class="limit-header">
+          <span class="limit-title">历史保留天数</span>
+        </div>
+        <p class="limit-desc">
+          历史版本的保留天数。
+        </p>
+        <div class="limit-value">
+          <span class="current">{{ historyDays.value }} 天</span>
+          <el-button
+            size="small"
+            type="primary"
+            @click="editLimit('history_retention_days', historyDays)"
+          >
+            编辑
+          </el-button>
+        </div>
+      </div>
+
+      <div class="limit-card">
+        <div class="limit-header">
+          <span class="limit-title">历史总容量上限</span>
+        </div>
+        <p class="limit-desc">
+          历史版本全库总容量上限（按文本内容估算）。
+        </p>
+        <div class="limit-value">
+          <span class="current">{{ historyTotalMb.value }} MB</span>
+          <el-button
+            size="small"
+            type="primary"
+            @click="editLimit('history_max_total_mb', historyTotalMb)"
+          >
+            编辑
+          </el-button>
+        </div>
+      </div>
     </div>
 
     <!-- v21.92：完整配置项入口。
@@ -139,7 +197,8 @@
       </p>
       <el-input-number
         v-model="editVal"
-        :min="0"
+        :min="editingMin"
+        :max="editingMax"
         :step="editingStep"
         style="width:100%"
       />
@@ -176,6 +235,10 @@ const storage = ref({ value: 1024, key: 'max_storage_mb_per_user' })
 const content = ref({ value: 1024, key: 'max_note_content_kb' })
 const notes = ref({ value: 1000, key: 'max_notes_per_user' })
 const retention = ref({ value: 0, key: 'trash_retention_days' })
+// 2.6.4：历史版本三配置（与「查看全部配置项」同源 configs 键）
+const historyPerNote = ref({ value: 50, key: 'history_max_per_note' })
+const historyDays = ref({ value: 180, key: 'history_retention_days' })
+const historyTotalMb = ref({ value: 2048, key: 'history_max_total_mb' })
 const registerEnabled = ref(true)
 
 const dialogVisible = ref(false)
@@ -183,6 +246,8 @@ const editingKey = ref('')
 const editingLabel = ref('')
 const editingStep = ref(1)
 const editingHint = ref('')
+const editingMin = ref(0)
+const editingMax = ref(Infinity)
 const editVal = ref(0)
 const isMobile = ref(false)
 
@@ -198,6 +263,9 @@ async function loadLimits() {
       if (c.key === 'max_note_content_kb') content.value.value = Math.round(parseInt(c.value) / 102.4) / 10 || 0
       if (c.key === 'max_notes_per_user') notes.value.value = parseInt(c.value) || 0
       if (c.key === 'trash_retention_days') retention.value.value = parseInt(c.value) || 0
+      if (c.key === 'history_max_per_note') historyPerNote.value.value = parseInt(c.value) || 0
+      if (c.key === 'history_retention_days') historyDays.value.value = parseInt(c.value) || 180
+      if (c.key === 'history_max_total_mb') historyTotalMb.value.value = parseInt(c.value) || 2048
       if (c.key === 'allow_register') registerEnabled.value = c.value === 'true'
     }
   } catch { /* silent */ }
@@ -210,13 +278,21 @@ function editLimit(key, refData) {
     max_storage_mb_per_user: '存储配额（MB）',
     max_note_content_kb: '单篇笔记上限（MB）',
     max_notes_per_user: '笔记数上限（条）',
-    trash_retention_days: '回收站清空天数（天）'
+    trash_retention_days: '回收站清空天数（天）',
+    history_max_per_note: '每篇笔记保留的历史版本份数（份）',
+    history_retention_days: '历史版本保留天数（天）',
+    history_max_total_mb: '历史版本全库总容量上限（MB）'
   }
-  const steps = { max_storage_mb_per_user: 10, max_note_content_kb: 0.5, max_notes_per_user: 10, trash_retention_days: 7 }
-  const hints = { max_storage_mb_per_user: '设为 0 表示不限制', max_note_content_kb: '设为 0 表示不限制（系统硬上限 100MB）', max_notes_per_user: '无上限限制', trash_retention_days: '0=永久保留；开启后超期笔记自动物理删除，不可恢复' }
+  const steps = { max_storage_mb_per_user: 10, max_note_content_kb: 0.5, max_notes_per_user: 10, trash_retention_days: 7, history_max_per_note: 10, history_retention_days: 30, history_max_total_mb: 256 }
+  const hints = { max_storage_mb_per_user: '设为 0 表示不限制', max_note_content_kb: '设为 0 表示不限制（系统硬上限 100MB）', max_notes_per_user: '无上限限制', trash_retention_days: '0=永久保留；开启后超期笔记自动物理删除，不可恢复', history_max_per_note: '0=停止生成新历史（已有历史保留）；范围 0~1000', history_retention_days: '范围 1~3650', history_max_total_mb: '范围 64~102400' }
+  // 2.6.4：取值范围与后端 validateConfigValue 同口径
+  const mins = { history_retention_days: 1, history_max_total_mb: 64 }
+  const maxs = { history_max_per_note: 1000, history_retention_days: 3650, history_max_total_mb: 102400 }
   editingLabel.value = labels[key] || key
   editingStep.value = steps[key] || 1
   editingHint.value = hints[key] || ''
+  editingMin.value = mins[key] || 0
+  editingMax.value = maxs[key] || Infinity
   dialogVisible.value = true
 }
 
