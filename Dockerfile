@@ -31,6 +31,7 @@ RUN apk add --no-cache ca-certificates tzdata
 RUN adduser -D -u 1000 sticky-note
 WORKDIR /app
 COPY --from=server-build /sticky-note /app/sticky-note
+COPY LICENSE NOTICE /app/
 # /app/data 必须先存在且归 sticky-note 所有：VOLUME 挂载时卷初始化为镜像内目录属主，
 # 缺失则卷根归 root，非 root 启动 mkdir logs 直接 FATAL（冒烟 gate 实抓缺陷）
 RUN mkdir -p /app/data && chown -R sticky-note:sticky-note /app
@@ -42,7 +43,7 @@ LABEL org.opencontainers.image.title="StickyNote" \
       org.opencontainers.image.description="Lightweight multi-user note app (fnOS compatible, TCP mode in container)" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.source="https://github.com/yangzhenwei777/fnos-stickynote" \
-      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.licenses="AGPL-3.0-or-later" \
       org.opencontainers.image.revision="${GIT_COMMIT}" \
       org.opencontainers.image.created="${BUILD_TIME}"
 EXPOSE 13389

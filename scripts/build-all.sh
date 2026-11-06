@@ -74,6 +74,9 @@ chmod +x sticky-note 2>/dev/null || true
         fi
     done
 
+    # 授权文件随发布包分发（AGPL-3.0-or-later）
+    cp "${PROJECT_DIR}/LICENSE" "${PROJECT_DIR}/NOTICE" "${DIR}/"
+
     find "${DIR}" -name ".DS_Store" -delete 2>/dev/null || true
 
     echo "✅"

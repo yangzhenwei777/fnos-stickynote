@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- License: relicensed from MIT to AGPL-3.0-or-later. Releases up to and including v2.6.3 remain available under the MIT License.
+
 ## 2.6.3
 
 - Reading layout: the title bar stays pinned; content and the right outline scroll independently; the outline remains visible when content reaches the bottom.

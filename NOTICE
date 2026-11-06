@@ -1,0 +1,22 @@
+StickyNote (便签)
+Copyright (C) 2026 Davy
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+历史说明：v2.6.3 及更早的已发布版本仍按 MIT 许可证提供；自授权变更
+提交起，main 分支及后续版本按 AGPL-3.0-or-later 授权。
+
+Historical note: releases up to and including v2.6.3 remain available
+under the MIT License. The main branch from the license-change commit
+onward, and subsequent releases, are licensed under AGPL-3.0-or-later.

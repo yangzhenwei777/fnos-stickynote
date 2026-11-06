@@ -261,7 +261,9 @@ Issues and pull requests are welcome. Before submitting:
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+This project is licensed under the **GNU Affero General Public License v3.0 or later (AGPL-3.0-or-later)**. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+> Historical note: releases up to and including v2.6.3 remain available under the MIT License. The `main` branch from this commit onward, and future releases, are licensed under AGPL-3.0-or-later. Previously distributed copies, images, and packages are unaffected.
 
 ---
 

@@ -335,7 +335,9 @@ flowchart LR
 
 ## License
 
-MIT，详见 [LICENSE](LICENSE)。
+本项目采用 **GNU Affero General Public License v3.0 or later（AGPL-3.0-or-later）**，详见 [LICENSE](LICENSE) 与 [NOTICE](NOTICE)。
+
+> 历史说明：v2.6.3 及更早的已发布版本仍按 MIT 许可证提供；自本提交起，`main` 分支及后续版本按 AGPL-3.0-or-later 授权。此前已分发的副本、镜像和安装包不受影响。
 
 ---
 

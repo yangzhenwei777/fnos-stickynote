@@ -220,6 +220,8 @@ if ($xzReady) { $zipItems += $xzPath }
 $portableFlag = Join-Path $outDir 'portable.mode'
 Set-Content -Path $portableFlag -Value "portable build: all data is kept in .\sticky-note-data\ — delete this folder and the exe to remove every local trace." -Encoding ASCII
 $zipItems += $portableFlag
+$zipItems += (Join-Path $Root 'LICENSE')
+$zipItems += (Join-Path $Root 'NOTICE')
 Compress-Archive -Path $zipItems -DestinationPath $zip
 # v2.2.2 R7 门禁：发布 zip 必须含钉版 runtime（R4~R6 曾因脚本判据漏装，用户看到
 # 「webview2-runtime.tar.xz 缺失」回退告警）。体积 100MB 阈值双向防回归。

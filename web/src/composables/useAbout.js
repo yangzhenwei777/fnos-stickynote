@@ -34,7 +34,8 @@ export async function showAbout () {
   const lines = [
     'Sticky note' + (ver ? ' v' + ver : ''),
     'fnOS 原生便签 · Davy',
-    '© 2026 Davy'
+    '© 2026 Davy',
+    '开源协议：AGPL-3.0-or-later'
   ]
   await ElMessageBox.alert(lines.join('<br/>'), '关于', {
     confirmButtonText: '知道了',
