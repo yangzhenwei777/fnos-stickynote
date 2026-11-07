@@ -238,16 +238,16 @@ flowchart LR
 
 ## 质量保障
 
-2.6.3 交付实测：
+2.6.5 交付实测：
 
 | 门禁 | 结果 |
 |---|---|
 | 前端单元测试 | Vitest 513 / 513（61 个文件） |
-| 端到端测试 | Playwright E2E 142 通过 + 1 skip |
+| 端到端测试 | Playwright E2E 148 通过 + 1 skip |
 | 冒烟 / 迁移 / 边界 | 460 / 460、25 / 25、28 / 28 |
 | Go 单测 | server 18 包 + desktop 7 包全绿；gofmt / vet 0 |
-| 真机回归 | 测试飞牛 VM 三套件 462 / 28 / 25；UI 走查 17 / 17 |
-| 桌面发布门禁 | 绿色版 exe 版本、WebView2 运行时、图标断言 3 层 GREEN |
+| 真机回归 | 测试飞牛 VM 三套件 462 / 28 / 25；UI 走查 19 / 19 |
+| 桌面发布门禁 | gate 层 1–4 GREEN（空白屏 max=54） |
 | 依赖 | Go 74 个模块 / npm 直接依赖 42 项；零新增依赖 |
 
 持续集成还会执行：`go test -race`、覆盖率门禁、ESLint 零告警、`govulncheck` / `npm audit` 基线差分、`check_secrets` 凭据扫描、VERSION 与 fpk manifest 一致性校验、fpk 结构与版本字面量校验。

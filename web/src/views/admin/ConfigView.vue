@@ -295,6 +295,10 @@ async function handleEdit() {
 .config-value {
   color: var(--text-primary);
   font-weight: 500;
+  /* 2.6.5：CORS 等长 URL 串无断点，放不下时允许任意位置折行，避免撑出横向滚动 */
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-width: 100%;
 }
 
 .mobile-card-actions {

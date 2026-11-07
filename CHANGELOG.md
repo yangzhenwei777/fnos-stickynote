@@ -4,6 +4,18 @@
 
 - License: relicensed from MIT to AGPL-3.0-or-later. Releases up to and including v2.6.3 remain available under the MIT License.
 
+## 2.6.5
+
+- Mobile System Config → All Configs: long unbroken values such as the CORS allowlist now wrap inside the card instead of causing horizontal scrolling.
+- Desktop unchanged. No schema, API or dependency changes.
+
+## 2.6.4
+
+- Scrollbars: the PC note list, viewer and editor show a faint scrollbar while scrolling and hide it 3 seconds after scrolling stops; mobile hides scrollbars entirely while keeping scrolling functional.
+- Mobile list page: restored 16px side padding and top spacing; removed the constant 56px false scroll on the profile page; header/sidebar logo now uses the app icon.
+- System Config: added cards for history versions per note, retention days and total size cap; the all-config API no longer exposes five internal marker flags.
+- No schema changes, no new dependencies.
+
 ## 2.6.3
 
 - Reading layout: the title bar stays pinned; content and the right outline scroll independently; the outline remains visible when content reaches the bottom.
