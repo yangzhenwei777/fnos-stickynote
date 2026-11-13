@@ -116,8 +116,21 @@ func SyncNoteUploadsTx(tx *sql.Tx, noteID, userID int64, content string) error {
 // ListNoteUploads 返回笔记引用的附件文件名清单。
 // 必须在删除笔记**之前**调用——note_uploads 有 ON DELETE CASCADE，
 // 笔记删除后关系记录随之消失，无法再查询。
+type noteUploadQueryer interface {
+	Query(query string, args ...any) (*sql.Rows, error)
+}
+
 func ListNoteUploads(noteID int64) ([]string, error) {
-	rows, err := DB.Query("SELECT filename FROM note_uploads WHERE note_id = ?", noteID)
+	return listNoteUploadsQuery(DB, noteID)
+}
+
+// ListNoteUploadsTx 在调用方事务内读取附件，保证与后续删除、事件使用同一集合。
+func ListNoteUploadsTx(tx *sql.Tx, noteID int64) ([]string, error) {
+	return listNoteUploadsQuery(tx, noteID)
+}
+
+func listNoteUploadsQuery(q noteUploadQueryer, noteID int64) ([]string, error) {
+	rows, err := q.Query("SELECT filename FROM note_uploads WHERE note_id = ?", noteID)
 	if err != nil {
 		return nil, err
 	}

@@ -49,7 +49,8 @@ func MaxBodySize(limit int64) gin.HandlerFunc {
 // ---- 动态请求体上限（v21.55 P2：跟随前台【单篇笔记上限】配置）----
 // 需求：管理员在管理后台改 max_note_content_kb 后，技术层上限同步变化，无需改代码。
 // 设计：
-//   - 读取 configs.max_note_content_kb（KB），X=0（不限）→ 默认 100MB 兜底（与业务硬上限一致）
+//   - 读取 configs.max_note_content_kb（KB），X=0（不限）→ 100MB 业务正文 + 20% JSON 余量
+//     （业务硬上限仍为 100MB；若传输层也取 100MB，JSON 字段开销会让合法边界内容必然失败）
 //   - 有效 X → 上限 = max(X×1.2, X+1MB)（JSON 转义余量，防存满内容被误拦）
 //   - 下限 16MB（不低于小接口档位）、上限 128MB（v21.90 N-04：由 256MB 收敛，
 //     1 核/低内存 NAS 上多并发 100MB+ body 会放大 DoS 面；业务默认上限仍为 100MB）
@@ -57,7 +58,7 @@ func MaxBodySize(limit int64) gin.HandlerFunc {
 const (
 	dynamicBodyMin      = 16 << 20        // 16MB 下限
 	dynamicBodyMax      = 128 << 20       // 128MB 封顶（v21.90 收敛）
-	dynamicBodyDefault  = 100 << 20       // X=0 时兜底 100MB（对齐业务硬上限）
+	dynamicBodyDefault  = 120 << 20       // 100MB 业务正文 + 20% JSON 转义/字段余量
 	dynamicConfigTTL    = 5 * time.Second // 配置缓存 TTL
 	dynamicJSONOverhead = 1 << 20         // JSON 转义余量 1MB
 )

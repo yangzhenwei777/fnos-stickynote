@@ -138,6 +138,8 @@ func NewLocalService(profileDir string) *LocalService {
 		userID:    1,
 	}
 	lsInstance = ls // 刀 3：mountWorker 等包级路径回写会话态用
+	ls.notes.LocalHooks = newLocalSyncHooks()
+	ls.folders.LocalHooks = ls.notes.LocalHooks
 	// v2.3.0：远端把文件夹锁定后，本进程的解锁授权立即作废（fail-closed）。
 	synclocal.FolderLockChangedHook = func(folderID int64, encrypted bool) {
 		if encrypted {
@@ -165,8 +167,7 @@ func (l *LocalService) CreateNote(title, content, tags string, folderID *int64) 
 	}
 	n, err := l.notes.CreateNote(l.userID, title, content, tags, folderID)
 	if err == nil {
-		l.enqueueNote(n.ID, "CREATE")
-		wakeScheduler() // v21.147 实时同步：变更入队后立刻触发同步
+		wakeScheduler() // 业务与 Outbox 已在同一事务提交
 	}
 	return n, err
 }
@@ -174,8 +175,7 @@ func (l *LocalService) CreateNote(title, content, tags string, folderID *int64) 
 func (l *LocalService) UpdateNote(id int64, title, content, tags string, baseVersion int64) (*model.Note, error) {
 	n, err := l.notes.UpdateNote(id, l.userID, title, content, tags, baseVersion)
 	if err == nil {
-		l.enqueueNote(id, "UPDATE")
-		wakeScheduler() // v21.147 实时同步：变更入队后立刻触发同步
+		wakeScheduler() // 业务与 Outbox 已在同一事务提交
 	}
 	return n, err
 }
@@ -204,7 +204,6 @@ func (l *LocalService) DeleteNote(id int64) error {
 	if err := l.notes.DeleteNote(id, l.userID); err != nil {
 		return err
 	}
-	l.enqueueNote(id, "DELETE")
 	wakeScheduler() // v21.147 实时同步：变更入队后立刻触发同步
 	return nil
 }
@@ -219,7 +218,6 @@ func (l *LocalService) MoveNote(id int64, folderID *int64) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	l.enqueueNote(id, "UPDATE")
 	wakeScheduler() // v21.147 实时同步：变更入队后立刻触发同步
 	return version, nil
 }
@@ -231,7 +229,6 @@ func (l *LocalService) EncryptNote(id int64, password, confirmPassword string) e
 	if _, err := l.notes.EncryptNote(id, l.userID, password, confirmPassword); err != nil {
 		return err
 	}
-	l.enqueueNote(id, "UPDATE")
 	wakeScheduler() // v21.147 实时同步：变更入队后立刻触发同步
 	return nil
 }
@@ -239,8 +236,7 @@ func (l *LocalService) EncryptNote(id int64, password, confirmPassword string) e
 func (l *LocalService) DecryptNote(id int64, password string) (string, error) {
 	p, err := l.notes.DecryptNote(id, l.userID, password)
 	if err == nil {
-		l.enqueueNote(id, "UPDATE")
-		wakeScheduler() // v21.147 实时同步：变更入队后立刻触发同步
+		wakeScheduler() // 业务与 Outbox 已在同一事务提交
 	}
 	return p, err
 }
@@ -252,8 +248,7 @@ func (l *LocalService) VerifyEncrypt(id int64, password string) (*model.Note, er
 func (l *LocalService) UpdateEncrypted(id int64, title, tags, plaintext, password string, baseVersion int64) (*model.Note, error) {
 	n, err := l.notes.UpdateEncrypted(id, l.userID, title, tags, plaintext, password, baseVersion)
 	if err == nil {
-		l.enqueueNote(id, "UPDATE")
-		wakeScheduler() // v21.147 实时同步：变更入队后立刻触发同步
+		wakeScheduler() // 业务与 Outbox 已在同一事务提交
 	}
 	return n, err
 }
@@ -279,7 +274,7 @@ func (l *LocalService) enqueueFolder(folderID int64, operation string) {
 func (l *LocalService) CreateFolder(name string) (*model.Folder, error) {
 	f, err := l.folders.Create(l.userID, name)
 	if err == nil && f != nil && f.ID != nil {
-		l.enqueueFolder(*f.ID, "CREATE")
+		wakeScheduler()
 	}
 	return f, err
 }
@@ -288,7 +283,7 @@ func (l *LocalService) RenameFolder(id int64, name string) error {
 	if err := l.folders.Rename(id, l.userID, name); err != nil {
 		return err
 	}
-	l.enqueueFolder(id, "UPDATE")
+	wakeScheduler()
 	return nil
 }
 
@@ -296,12 +291,8 @@ func (l *LocalService) MoveFolder(id int64, position string) error {
 	if err := l.folders.Move(id, l.userID, position); err != nil {
 		return err
 	}
-	// 重排是集合级意图：入队单条 FOLDER_ORDER op（本地全序 + 逐夹 base，§55）。
-	if workerPtr() != nil {
-		if err := synclocal.EnqueueFolderOrderOp(database.DB); err != nil {
-			log.Printf("[sync] enqueue FOLDER_ORDER failed: %v", err)
-		}
-	}
+	// 重排与集合级 Outbox 已在同一事务提交。
+	wakeScheduler()
 	return nil
 }
 
@@ -309,17 +300,12 @@ func (l *LocalService) DeleteFolder(id int64) error {
 	if err := l.ensureFolderUnlocked(&id); err != nil {
 		return err
 	}
-	// 删除后行不存在——入队所需引用必须在物理删前捕获（含 base_version）。
-	ref, ok := synclocal.GetFolderRef(database.DB, id)
+	// 文件夹及受影响笔记的 Outbox 均由 App Facade 在同一事务内处理。
 	if err := l.folders.Delete(id, l.userID); err != nil {
 		return err
 	}
 	l.forgetFolderUnlock(id)
-	if ok && workerPtr() != nil {
-		if err := synclocal.EnqueueFolderDeleteOp(database.DB, ref); err != nil {
-			log.Printf("[sync] enqueue folder DELETE %s failed: %v", ref.SyncID, err)
-		}
-	}
+	wakeScheduler()
 	return nil
 }
 

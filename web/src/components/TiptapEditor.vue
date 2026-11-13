@@ -282,7 +282,8 @@ const editor = useEditor({
     // v21.109 tiptap 3.x：StarterKit 默认内置 Link/Underline/ListKeymap——本项目对
     // Link（openOnClick/HTMLAttributes）与 Underline（保持独立配置位）单独 configure，
     // 故在 StarterKit 内禁用对应版本避免双实例；paragraph:false 沿用（IndentParagraph 接管）。
-    StarterKit.configure({ paragraph: false, link: false, underline: false }),
+    // codeBlock 同样由下方 CodeBlockLowlight 接管，避免重复注册导致扩展配置不确定。
+    StarterKit.configure({ paragraph: false, link: false, underline: false, codeBlock: false }),
     IndentParagraph,
     Placeholder.configure({
       placeholder: '开始写作...'

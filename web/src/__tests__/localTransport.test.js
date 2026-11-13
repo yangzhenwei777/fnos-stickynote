@@ -2,6 +2,7 @@
 // mock window.go.main.LocalService，逐项钉住：参数归一规则、handler 同构响应形状、
 // Go 哨兵错误→HTTP 状态映射、未接线端点 501。真实链路（exe 启动人工走查）另测。
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import errorContract from './fixtures/error-contract.json' with { type: 'json' }
 import { localAdapter } from '@/api/local/transport'
 
 const F = () => window.go.main.LocalService
@@ -208,5 +209,27 @@ describe('LocalTransport 路由与形状', () => {
     expect((await call({ url: '/api/notes/5' })).data.id).toBe(5)
     await call({ url: '/api/notes', params: {} })
     expect(F().ListNotes).toHaveBeenLastCalledWith(1, 20, '', '', 'updated_at', null)
+  })
+
+  it.each(errorContract.cases)('共享错误契约 $name', async (c) => {
+    const method = c.domain === 'folder' && c.code !== 'FOLDER_LOCKED' ? 'RenameFolder' : 'UpdateNote'
+    F()[method].mockRejectedValueOnce(new Error(c.goError))
+    const url = method === 'RenameFolder' ? '/api/folders/1' : '/api/notes/5'
+    const data = method === 'RenameFolder' ? JSON.stringify({ name: '新名称' }) : '{}'
+    const expectedData = { error: c.message }
+    if (c.code) expectedData.code = c.code
+    await expect(call({ method: 'put', url, data })).rejects.toMatchObject({
+      response: { status: c.status, data: expectedData }
+    })
+  })
+
+  it('Wails 提供结构化错误时优先保留 status/code，不回退裸英文', async () => {
+    const structured = Object.assign(new Error('unexpected backend detail'), {
+      data: { status: 409, code: 'NOTE_VERSION_CONFLICT', error: '笔记已在其他窗口更新' }
+    })
+    F().UpdateNote.mockRejectedValueOnce(structured)
+    await expect(call({ method: 'put', url: '/api/notes/5', data: '{}' })).rejects.toMatchObject({
+      response: { status: 409, data: { code: 'NOTE_VERSION_CONFLICT', error: '笔记已在其他窗口更新' } }
+    })
   })
 })

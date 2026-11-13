@@ -76,12 +76,13 @@ func TestNoteCryptoRoundtrip(t *testing.T) {
 	if err != nil || view.Content != "<p>顶层明文</p>" || !view.IsEncrypted {
 		t.Fatalf("Verify 回显不符: %v %+v", err, view)
 	}
-	// 加密态更新：CAS 正确版本 + 口令验证 → version+1，标题更新，仍密文存储。
+	// 桌面本地加密更新：version 保持“最后已知服务端版本”（§25 P0-1），
+	// Outbox push 后由服务端统一 CAS+version++，不得在本地重复推进版本。
 	up, err := svc.UpdateEncrypted(n.ID, 1, "secret2", "", "<p>改后明文</p>", "pw123", n.Version)
 	if err != nil {
 		t.Fatalf("UpdateEncrypted: %v", err)
 	}
-	if up.Version != n.Version+1 || up.Content != "" {
+	if up.Version != n.Version || up.Content != "" {
 		t.Fatalf("加密更新语义不符: %+v", up)
 	}
 	// 解密还原：明文回写 content，加密标记清除。

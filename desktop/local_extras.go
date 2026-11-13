@@ -120,10 +120,9 @@ func (l *LocalService) TrashStats() (map[string]any, error) {
 }
 
 func (l *LocalService) RestoreNote(id int64) (map[string]any, error) {
-	if err := model.RestoreNote(id, l.userID); err != nil {
+	if err := l.notes.RestoreNote(id, l.userID); err != nil {
 		return nil, err
 	}
-	l.enqueueNote(id, "RESTORE")
 	folder := "我的笔记" // v21.107 P2-9：恢复去向（原夹已删时模型层已置 NULL=默认）
 	if name, ferr := model.GetNoteFolderName(id); ferr == nil && name != "" {
 		folder = name
@@ -139,11 +138,8 @@ func (l *LocalService) PermanentDeleteNote(id int64) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	// E8（2026-09-23 用户实测缺口补全）：彻底删必须入队 PURGE 推给服务端——此前只做本地
-	// 物理删（服务端回收站里仍留着）。**必须在物理删之前入队**：EnqueueNoteOp 构造 payload
-	// 需要 notes 行在。服务端侧 opPurge 有「活行拒收」护栏，入队后本地删失败也不会误删服务端数据。
-	l.enqueueNote(id, "PURGE")
-	if err := model.PermanentDeleteNote(id, l.userID); err != nil {
+	// PURGE payload 与本地物理删除由 App Facade 在同一事务内完成。
+	if err := l.notes.PermanentDelete(id, l.userID); err != nil {
 		return nil, err
 	}
 	if len(filenames) > 0 {
@@ -154,33 +150,18 @@ func (l *LocalService) PermanentDeleteNote(id int64) (map[string]any, error) {
 }
 
 func (l *LocalService) EmptyTrash() (map[string]any, error) {
-	// E8：清空前逐条入队 PURGE（先收集 ids——payload 构造需要行在，且清空后不可再查）。
-	var ids []int64
-	rows, err := database.DB.Query(`SELECT id FROM notes WHERE user_id = ? AND deleted_at IS NOT NULL`, l.userID)
-	if err != nil {
-		return nil, err
-	}
-	for rows.Next() {
-		var id int64
-		if serr := rows.Scan(&id); serr == nil {
-			ids = append(ids, id)
-		}
-	}
-	rows.Close()
-	for _, id := range ids {
-		l.enqueueNote(id, "PURGE")
-	}
-	notes, uploadNames, err := model.EmptyTrashNotes(l.userID)
+	// ID、PURGE payload、附件清单与本地物理删除由 App Facade 同事务完成。
+	deleted, uploadNames, err := l.notes.EmptyTrash(l.userID)
 	if err != nil {
 		return nil, err
 	}
 	if len(uploadNames) > 0 {
 		database.DeleteOrphanUploadFiles(l.uploadDir, uploadNames, l.userID)
 	}
-	if len(ids) > 0 {
+	if deleted > 0 {
 		wakeScheduler()
 	}
-	return map[string]any{"message": "回收站已清空", "deleted": len(notes)}, nil
+	return map[string]any{"message": "回收站已清空", "deleted": deleted}, nil
 }
 
 // ---- 批量 / 复制（对齐 handler 响应键） ----
@@ -202,5 +183,5 @@ func (l *LocalService) CopyNote(id int64, folderID *int64) (*model.Note, error) 
 	if err := l.ensureFolderUnlocked(folderID); err != nil {
 		return nil, err
 	}
-	return model.CopyNoteToFolder(id, l.userID, folderID, 100000)
+	return l.notes.CopyNoteToFolder(id, l.userID, folderID)
 }

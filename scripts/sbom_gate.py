@@ -127,7 +127,7 @@ def build_body(ver, go_rows, npm_rows, label=None, gen_date=None):
 
 def gen(label=None, gen_date=None):
     ver = (read(os.path.join(ROOT, "VERSION")) or "").strip()
-    if not re.match(r"^\d+\.\d+\.\d+$", ver):
+    if not re.match(r"^\d+\.\d+\.\d+(?:-R\d+)?$", ver):
         raise SystemExit(f"VERSION 非法：{ver!r}")
     go = live_go_rows()
     if go is None:

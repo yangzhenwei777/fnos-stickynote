@@ -11,6 +11,9 @@ on:
   # 桌面二进制交付面以本机根目录为准（权威），CI 只需证明"能构建成功"（红线 29 断言已验）。
   # 需要 CI 产物时手动触发本 workflow（本地 Actions 页 Run workflow），
   # 上传的包 retention-days=1，24h 后自动回收，不长期占配额。
+  # 每周复核新披露的漏洞；定时扫描不能替代 push/PR 门禁。
+  schedule:
+    - cron: '17 2 * * 1'
   workflow_dispatch:
 
 # 2026-08-06 修复（场景 A）：
@@ -19,6 +22,9 @@ on:
 # 2. govulncheck @latest 不钉版（可能要求更高 Go 版本 + 命令不在 PATH）
 #    → 钉 v1.6.0 并用 $(go env GOPATH)/bin/govulncheck 绝对路径
 # 3. npm audit 基线文件为空 → 使用真实基线 docs/vuln_baseline_npm.txt（在案挂账，只拦新增）
+
+permissions:
+  contents: read
 
 jobs:
   backend:
@@ -29,7 +35,7 @@ jobs:
         with:
           # 2026-10-21：1.26.9 → 1.26.10（GO-2026-6809 crypto/x509 修复版本 1.26.10）
           # 2026-10-09：1.26.7 → 1.26.9（Go 官方安全发布，13 条公告修复版本均为 1.26.9）
-          go-version: '1.26.10'
+          go-version: '1.26.11'
           # 2026-10-09：关闭 setup-go 内置缓存。
           # 实测（本地 GOMODCACHE 1.68GB + GOCACHE 1.08GB）：内置缓存把 mod 缓存与编译缓存
           # 全量上传，单 Windows runner 就 528MB、Linux 332MB，双平台合计 860MB，
@@ -193,17 +199,17 @@ jobs:
       # 降当前占用、无法回退已计用量（2026-10-09 实证：存储实际仅 383MB/500MB，
       # upload 仍报 "Artifact storage quota has been hit"）。
       # 该二进制仅供 frontend job 下载做冒烟/E2E，非交付物，走 cache 不占 artifact 配额。
-      # key 挂 go.sum + VERSION：依赖或版本变更即失效重建，避免拿到过期二进制。
-      # 步骤顺序：先 restore（命中则跳过 build），未命中才重新构建。
+      # key 绑定当前提交：VERSION/go.sum 不变时源码仍可能变化，绝不允许 E2E 复用旧二进制。
+      # 同一 workflow 内 backend 写入、frontend 精确恢复；不使用 restore-keys。
       - name: cache server binary (跨 job 传递)
         id: server-bin-cache
         uses: actions/cache@v4
         with:
           path: server/sticky-note
-          key: server-bin-${{ runner.os }}-${{ hashFiles('server/go.sum') }}-v${{ hashFiles('VERSION') }}
+          key: server-bin-${{ runner.os }}-${{ github.sha }}
       - name: go build (linux)
         if: steps.server-bin-cache.outputs.cache-hit != 'true'
-        run: CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.Version=$(cat ../VERSION)" -o sticky-note .
+        run: CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.Version=$(cat ../VERSION) -X main.GitCommit=${GITHUB_SHA}" -o sticky-note .
         working-directory: server
 
   frontend:
@@ -242,7 +248,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: server/sticky-note
-          key: server-bin-${{ runner.os }}-${{ hashFiles('server/go.sum') }}-v${{ hashFiles('VERSION') }}
+          key: server-bin-${{ runner.os }}-${{ github.sha }}
       - name: dist sync & smoke test
         run: |
           chmod +x server/sticky-note
@@ -255,9 +261,10 @@ jobs:
         # 评审 P0-1：注入测试口令，确保 §13 TOTP 用例及 §14-17 在 CI 真实执行（此前缺 env 致 §13 起被跳过）。
         # 口令仅用于 CI 一次性临时实例的测试注册账号，非真实凭据；不加引号以规避凭据扫描的带引号字面量正则。
         env:
+          REQUIRE_E2E: '1'
           NOTEPAD_TEST_PASSWORD: Ci-E2e-Test-Pass-2026
         run: |
-          pip install playwright
+          pip install -r scripts/requirements-test.txt
           python3 -m playwright install chromium --with-deps
           python3 scripts/e2e_test.py server/sticky-note web/dist
         working-directory: .
@@ -284,7 +291,7 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           # 2026-10-21：1.26.9 → 1.26.10（GO-2026-6809 crypto/x509，同 backend job 联动）
-          go-version: '1.26.10'
+          go-version: '1.26.11'
           # 2026-10-09：同 backend job，关闭内置缓存（528MB→0），理由见 backend job 注释。
           # 注：下方 webview2-fixed-156.0.4314.50 缓存刻意保留——key 钉死 runtime 版本，
           # 不会随每次 push 增殖，且省掉每轮 ~160MB runtime 资产下载；它与本行关闭的 go 缓存互不冲突。
@@ -310,6 +317,11 @@ jobs:
         run: |
           go vet ./...
           go test ./... -count=1
+        working-directory: desktop
+      - name: desktop race（调度/换库/会话/主包）
+        run: |
+          choco install mingw -y --no-progress
+          go test -race ./synclocal ./localauth ./localstore . -count=1
         working-directory: desktop
       - name: govulncheck desktop (SBOM 增量单列基线，纪律 3.2/6.2)
         # PYTHONIOENCODING=utf-8：Windows runner 控制台默认 cp1252，vuln_gate 中文输出
@@ -368,6 +380,12 @@ jobs:
             exit 0
           }
           throw "156 runtime 不可用：请上传 webview2-runtime-$ver.tar.xz 到本仓或私有仓 Release runtime-$ver（或设置 STICKYNOTE_WV2_SRC）"
+      - name: WebView2 预打包资产 SHA256 校验
+        shell: pwsh
+        run: |
+          $actual = (Get-FileHash "desktop/build/bin/webview2-runtime.tar.xz" -Algorithm SHA256).Hash.ToLower()
+          $expected = "1f8ac7ef092a5c0ef61cb3edcb829569be48c3c37196f05f449cd6c86f97b32b"
+          if ($actual -ne $expected) { throw "WebView2 runtime SHA256 mismatch: $actual" }
       - name: build-desktop.ps1（绿色版 zip + 版本注入断言）
         run: |
           cd web && npm ci --registry=https://registry.npmjs.org && cd ..

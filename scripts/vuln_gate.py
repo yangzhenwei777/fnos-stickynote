@@ -175,6 +175,30 @@ def check_npm(data, baseline_entries):
             new.append(f"{item['label']} 基线豁免已到期 {max(dues)}，强制复核")
     return new
 
+def valid_go_scan(data):
+    """只接受完整 govulncheck v1 NDJSON 及可识别的 config，拒绝错误文本/半段 JSON 假绿。"""
+    decoder = json.JSONDecoder()
+    pos = 0
+    objects = 0
+    valid_config = False
+    try:
+        while pos < len(data):
+            while pos < len(data) and data[pos] in ' \t\n\r':
+                pos += 1
+            if pos >= len(data):
+                break
+            obj, end = decoder.raw_decode(data, pos)
+            pos = end
+            objects += 1
+            config = obj.get('config') if isinstance(obj, dict) else None
+            if isinstance(config, dict) and config.get('scanner_name') == 'govulncheck' \
+                    and config.get('protocol_version') and str(config.get('go_version', '')).startswith('go'):
+                valid_config = True
+    except (json.JSONDecodeError, TypeError):
+        return False
+    return objects > 0 and valid_config
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--mode", choices=["go", "npm"], required=True)
@@ -192,6 +216,9 @@ def main():
         sys.exit(2)
 
     if args.mode == "go":
+        if not valid_go_scan(data):
+            print("⛔ govulncheck 输出协议无效或缺少可识别 config；按扫描失败处理，拒绝假绿")
+            sys.exit(2)
         baseline_ids = load_go_baseline(args.baseline)
         new = check_go(data, baseline_ids)
         for vid in new:

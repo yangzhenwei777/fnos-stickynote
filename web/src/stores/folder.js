@@ -6,6 +6,7 @@ import {
 } from '@/api/folder'
 import { message } from '@/utils/message'
 import { IS_DESKTOP } from '@/api/local/transport'
+import { listFolderUnlockStatus } from '@/api/local/desktopApi'
 import { saveGrant, removeGrant, clearGrants, grantedFolderIds } from '@/utils/folderGrants'
 
 /**
@@ -65,7 +66,6 @@ export const useFolderStore = defineStore('folder', () => {
   async function restoreUnlocks() {
     if (IS_DESKTOP) {
       try {
-        const { listFolderUnlockStatus } = await import('@/api/local/desktopApi')
         const ids = await listFolderUnlockStatus()
         unlockedFolderIds.value = Array.isArray(ids) ? ids.map(Number).filter(n => n > 0) : []
       } catch {

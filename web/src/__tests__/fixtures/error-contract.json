@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "name": "note_not_found",
+      "domain": "note",
+      "sentinel": "not_found",
+      "goError": "sql: no rows in result set",
+      "appCode": "NOT_FOUND",
+      "status": 404,
+      "code": "",
+      "message": "笔记不存在"
+    },
+    {
+      "name": "wrong_password",
+      "domain": "note",
+      "sentinel": "wrong_password",
+      "goError": "wrong password",
+      "appCode": "WRONG_PASSWORD",
+      "status": 403,
+      "code": "WRONG_PASSWORD",
+      "message": "密码错误"
+    },
+    {
+      "name": "quota_exceeded",
+      "domain": "note",
+      "sentinel": "quota_exceeded",
+      "goError": "note quota exceeded",
+      "appCode": "QUOTA_EXCEEDED",
+      "status": 403,
+      "code": "QUOTA_EXCEEDED",
+      "message": "已达到笔记数量上限，请先清理不需要的笔记"
+    },
+    {
+      "name": "folder_name_exists",
+      "domain": "folder",
+      "sentinel": "folder_name_exists",
+      "goError": "folder name exists",
+      "appCode": "FOLDER_NAME_EXISTS",
+      "status": 409,
+      "code": "FOLDER_NAME_EXISTS",
+      "message": "文件夹名称已存在"
+    },
+    {
+      "name": "folder_immutable",
+      "domain": "folder",
+      "sentinel": "folder_immutable",
+      "goError": "default folder is immutable",
+      "appCode": "FOLDER_IMMUTABLE",
+      "status": 400,
+      "code": "FOLDER_IMMUTABLE",
+      "message": "默认文件夹不可修改"
+    },
+    {
+      "name": "folder_locked",
+      "domain": "folder",
+      "sentinel": "folder_locked",
+      "goError": "folder is locked",
+      "appCode": "FOLDER_LOCKED",
+      "status": 423,
+      "code": "FOLDER_LOCKED",
+      "message": "文件夹已加密，请先解锁"
+    },
+    {
+      "name": "version_conflict",
+      "domain": "note",
+      "sentinel": "version_conflict",
+      "goError": "version conflict",
+      "appCode": "VERSION_CONFLICT",
+      "status": 409,
+      "code": "VERSION_CONFLICT",
+      "message": "笔记已在其他设备修改，请刷新后重试"
+    }
+  ]
+}

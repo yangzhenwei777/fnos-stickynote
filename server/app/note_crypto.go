@@ -68,10 +68,23 @@ func (s *NoteService) EncryptNote(id, userID int64, password, confirmPassword st
 	}
 
 	if !s.serverEvents {
-		if err := model.SetEncrypted(id, userID, string(hash), ciphertext); err != nil {
+		tx, err := database.DB.Begin()
+		if err != nil {
 			return 0, err
 		}
-		return readVersion(id)
+		defer tx.Rollback()
+		if _, err := tx.Exec(`UPDATE notes SET is_encrypted=1, encrypt_password_hash=?, encrypted_content=?, content='', content_text='' WHERE id=? AND user_id=?`,
+			string(hash), ciphertext, id, userID); err != nil {
+			return 0, err
+		}
+		if err := s.outboxNote(tx, id, "UPDATE"); err != nil {
+			return 0, err
+		}
+		var v int64
+		if err := tx.QueryRow(`SELECT version FROM notes WHERE id = ?`, id).Scan(&v); err != nil {
+			return 0, err
+		}
+		return v, tx.Commit()
 	}
 	// server 模式：事务内 CAS（is_encrypted=0 + version 基点）→ version++ → UPDATE 事件同提交。
 	tx, err := database.DB.Begin()
@@ -111,7 +124,19 @@ func (s *NoteService) DecryptNote(id, userID int64, password string) (string, er
 	}
 
 	if !s.serverEvents {
-		if err := model.ClearEncrypted(id, userID, plaintext, htmltext.ToText(plaintext)); err != nil {
+		tx, err := database.DB.Begin()
+		if err != nil {
+			return "", err
+		}
+		defer tx.Rollback()
+		if _, err := tx.Exec(`UPDATE notes SET is_encrypted=0, encrypt_password_hash='', encrypted_content='', content=?, content_text=? WHERE id=? AND user_id=?`,
+			plaintext, htmltext.ToText(plaintext), id, userID); err != nil {
+			return "", err
+		}
+		if err := s.outboxNote(tx, id, "UPDATE"); err != nil {
+			return "", err
+		}
+		if err := tx.Commit(); err != nil {
 			return "", err
 		}
 		return plaintext, nil
@@ -180,7 +205,33 @@ func (s *NoteService) UpdateEncrypted(id, userID int64, title, tags, plaintext, 
 	}
 
 	if !s.serverEvents {
-		if err := model.UpdateEncryptedNote(id, userID, title, tags, string(newHash), ciphertext, plaintext, baseVersion); err != nil {
+		tx, err := database.DB.Begin()
+		if err != nil {
+			return nil, err
+		}
+		defer tx.Rollback()
+		res, err := tx.Exec(`UPDATE notes SET title=?, content='', content_text='', tags=?, is_encrypted=1,
+			encrypt_password_hash=?, encrypted_content=?, updated_at=CURRENT_TIMESTAMP
+			WHERE id=? AND user_id=? AND deleted_at IS NULL AND is_encrypted=1`,
+			title, tags, string(newHash), ciphertext, id, userID)
+		if err != nil {
+			return nil, err
+		}
+		if n, err := res.RowsAffected(); err != nil {
+			return nil, err
+		} else if n == 0 {
+			return nil, sql.ErrNoRows
+		}
+		if err := model.SyncNoteTagsTx(tx, id, tags); err != nil {
+			return nil, err
+		}
+		if err := database.SyncNoteUploadsTx(tx, id, userID, plaintext); err != nil {
+			return nil, err
+		}
+		if err := s.outboxNote(tx, id, "UPDATE"); err != nil {
+			return nil, err
+		}
+		if err := tx.Commit(); err != nil {
 			return nil, err
 		}
 		return model.GetNote(id, userID)

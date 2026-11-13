@@ -31,7 +31,10 @@ import sqlite3
 try:
     from playwright.sync_api import sync_playwright
 except ImportError:
-    print("[SKIP] playwright not installed. Run: pip install playwright && playwright install chromium")
+    if os.environ.get("REQUIRE_E2E") == "1":
+        print("[FAIL] Playwright is required in CI. Run: pip install -r scripts/requirements-test.txt && playwright install chromium")
+        sys.exit(2)
+    print("[SKIP] playwright not installed. Run: pip install -r scripts/requirements-test.txt && playwright install chromium")
     sys.exit(0)
 
 

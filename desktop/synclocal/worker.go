@@ -148,9 +148,19 @@ func (w *Worker) RunOnce(ctx context.Context) (Summary, error) {
 		return s, err
 	}
 	// §74/§92 代际与实例锚校验（首跑无存档则建立基线）。
-	if saved, _ := getState(w.db, "server_epoch"); saved != "" {
-		savedN, _ := strconv.ParseInt(saved, 10, 64)
-		inst, _ := getState(w.db, "server_instance_id")
+	saved, err := getState(w.db, "server_epoch")
+	if err != nil {
+		return s, fmt.Errorf("read server_epoch: %w", err)
+	}
+	if saved != "" {
+		savedN, err := strconv.ParseInt(saved, 10, 64)
+		if err != nil {
+			return s, fmt.Errorf("invalid server_epoch %q: %w", saved, err)
+		}
+		inst, err := getState(w.db, "server_instance_id")
+		if err != nil {
+			return s, fmt.Errorf("read server_instance_id: %w", err)
+		}
 		if savedN != st.ServerEpoch || (inst != "" && st.ServerInstanceID != "" && inst != st.ServerInstanceID) {
 			return s, ErrEpochChanged
 		}
@@ -162,8 +172,17 @@ func (w *Worker) RunOnce(ctx context.Context) (Summary, error) {
 		return s, err
 	}
 
-	cursorStr, _ := getState(w.db, "cursor")
-	cursor, _ := strconv.ParseInt(cursorStr, 10, 64)
+	cursorStr, err := getState(w.db, "cursor")
+	if err != nil {
+		return s, fmt.Errorf("read sync cursor: %w", err)
+	}
+	var cursor int64
+	if cursorStr != "" {
+		cursor, err = strconv.ParseInt(cursorStr, 10, 64)
+		if err != nil {
+			return s, fmt.Errorf("invalid sync cursor %q: %w", cursorStr, err)
+		}
+	}
 	if cursorStr != "" && cursor < st.MinAvailableChangeSeq {
 		return s, ErrResyncNeeded // §90：Bootstrap（P5）面；Outbox 保护在 P5 实现
 	}
@@ -274,7 +293,9 @@ func (w *Worker) RunOnce(ctx context.Context) (Summary, error) {
 		}
 		s.Downloaded, s.Repaired, s.AttachmentFailed = d, rp, f
 	}
-	_ = setState(w.db, "last_sync_at", time.Now().UTC().Format(time.RFC3339))
+	if err := setState(w.db, "last_sync_at", time.Now().UTC().Format(time.RFC3339)); err != nil {
+		return s, fmt.Errorf("record last_sync_at: %w", err)
+	}
 	return s, nil
 }
 
@@ -757,12 +778,7 @@ func (w *Worker) setCursor(old, new int64) error {
 }
 
 func (w *Worker) setCursorTx(tx *sql.Tx, old, new int64) error {
-	cur, err := getState(w.db, "cursor")
-	if err != nil {
-		return err
-	}
-	_ = cur
-	_, err = tx.Exec(`INSERT INTO sync_state (key, value) VALUES ('cursor', ?)
+	_, err := tx.Exec(`INSERT INTO sync_state (key, value) VALUES ('cursor', ?)
 		ON CONFLICT(key) DO UPDATE SET value = excluded.value`, strconv.FormatInt(new, 10))
 	return err
 }

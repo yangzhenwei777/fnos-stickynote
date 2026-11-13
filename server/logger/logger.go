@@ -17,6 +17,7 @@ type logger struct {
 	files     map[string]*os.File // "info", "error", "audit"
 	done      chan struct{}
 	closeOnce sync.Once
+	closed    bool // 关闭后禁止旧实例重新打开文件（并发写可能持有旧快照）
 }
 
 // 全局 logger 指针。
@@ -34,25 +35,37 @@ type logger struct {
 // 不再读全局，从根上消除该读点。
 var l atomic.Pointer[logger]
 
+// lifecycleMu 串行化 Init/Close 的“关停旧实例 + 替换全局指针”复合操作。
+// atomic.Pointer 只保证单次读写安全；若并发 Init 同时读到同一旧实例后再分别 Store，
+// 被覆盖的新实例会泄漏 ticker 和 Windows 文件句柄。
+var lifecycleMu sync.Mutex
+
 // cur 返回当前 logger 实例（可能为 nil）。所有读点统一走这里。
 func cur() *logger { return l.Load() }
+
+func (l *logger) shutdown() {
+	l.closeOnce.Do(func() {
+		close(l.done)
+		l.mu.Lock()
+		defer l.mu.Unlock()
+		l.closed = true
+		for _, f := range l.files {
+			_ = f.Close()
+		}
+	})
+}
 
 func Init(logDir string) error {
 	if err := os.MkdirAll(logDir, 0700); err != nil {
 		return fmt.Errorf("failed to create log directory: %w", err)
 	}
+	lifecycleMu.Lock()
+	defer lifecycleMu.Unlock()
 
 	// 重复 Init 时先关停上一实例：关停后再替换指针，
 	// 避免旧 ticker goroutine 与新实例并存（旧 done 通道必须先close）。
 	if old := l.Load(); old != nil {
-		old.closeOnce.Do(func() {
-			close(old.done)
-			old.mu.Lock()
-			defer old.mu.Unlock()
-			for _, f := range old.files {
-				f.Close()
-			}
-		})
+		old.shutdown()
 	}
 
 	inst := &logger{
@@ -85,18 +98,15 @@ func Init(logDir string) error {
 }
 
 func Close() {
+	lifecycleMu.Lock()
+	defer lifecycleMu.Unlock()
 	inst := cur()
 	if inst == nil {
 		return
 	}
-	inst.closeOnce.Do(func() {
-		close(inst.done)
-		inst.mu.Lock()
-		defer inst.mu.Unlock()
-		for _, f := range inst.files {
-			f.Close()
-		}
-	})
+	inst.shutdown()
+	// 仅当全局仍指向同一实例时清空，避免误清并发 Init 创建的新实例。
+	l.CompareAndSwap(inst, nil)
 }
 
 func Info(format string, args ...interface{}) {
@@ -194,6 +204,9 @@ func writeRaw(level, msg string) {
 }
 
 func (l *logger) getFile(level string) *os.File {
+	if l.closed {
+		return nil
+	}
 	key := strings.ToLower(level)
 	today := time.Now().Format("2006-01-02")
 

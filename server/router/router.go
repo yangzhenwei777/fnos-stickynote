@@ -86,8 +86,8 @@ func Setup(uploadDir string, webDir string) http.Handler {
 	api := r.Group("/api", middleware.RateLimit(20, 40))
 	// v21.52 P3 审计修复：请求体硬上限（MaxBytesReader，超限 413）。
 	// v21.53 方案 B 分级：小接口（登录/注册/配置/删除/导出等）16MB；
-	// 笔记保存（POST/PUT /notes）与导入（POST /notes/import）放宽到 100MB——
-	// 对齐业务硬上限 checkContentLimit(100MB)，修复"业务允许 100MB 但技术层 16MB 误杀"矛盾。
+	// 笔记保存（POST/PUT /notes）与导入（POST /notes/import）按业务 100MB + JSON 余量放宽——
+	// 对齐业务硬上限 checkContentLimit(100MB)，避免传输层同额限制把合法边界正文及字段开销误杀。
 	// （gin 中间件嵌套时 MaxBytesReader 取最外层限制，故大 body 路由必须独立分组）
 	{
 		// Public（16MB 小接口组）

@@ -25,9 +25,8 @@ export default defineConfig(({ mode }) => ({
     Components({
       resolvers: [ElementPlusResolver()]
     }),
-    // PWA（v21.29）：移动端可安装 + App 壳离线缓存
-    // 只缓存静态资源（App 壳），不缓存 /api 数据（避免登录态/敏感数据落本地）
-    VitePWA({
+    // PWA 仅用于 Web；桌面完全不生成 Service Worker 资产，避免误注册和无效预缓存。
+    ...(mode === 'desktop' ? [] : [VitePWA({
       // v1.0.175 P0-A（v20 §120）：桌面构建不注入 Service Worker 注册脚本
       injectRegister: mode === 'desktop' ? false : undefined,
       registerType: 'autoUpdate',
@@ -73,6 +72,15 @@ export default defineConfig(({ mode }) => ({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
+        // 首屏只预缓存应用壳；管理/备份/长图等低频能力按需下载并缓存。
+        globIgnores: [
+          '**/assets/AdminLogsView-*.js',
+          '**/assets/BackupView-*.js',
+          '**/assets/UsersView-*.js',
+          '**/assets/ConfigView-*.js',
+          '**/assets/LimitsView-*.js',
+          '**/assets/snapdom-*.js'
+        ],
         // Edge 安卓安装要求：SW 立即接管当前页面（clientsClaim）+ 新版立即激活（skipWaiting）
         clientsClaim: true,
         skipWaiting: true,
@@ -94,7 +102,7 @@ export default defineConfig(({ mode }) => ({
           }
         ]
       }
-    })
+    })]),
   ],
   resolve: {
     alias: {

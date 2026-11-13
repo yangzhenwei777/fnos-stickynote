@@ -31,7 +31,9 @@ export function useAutoSave(currentNote, currentTagInput, isDirty, applySavedToL
   let autoSaveTimer = null
   let draftTimer = null
   let savedHideTimer = null
-  let saveSeq = 0 // v21.68 P2-07：保存序号，防并发保存乱序（旧响应覆盖新状态）
+  let saveSeq = 0 // 保存序号，防并发保存乱序（旧响应覆盖新状态）
+  let editRevision = 0 // 编辑修订号：每次用户变更递增，旧保存响应不得清除更新输入
+  let saveQueue = Promise.resolve() // 单飞保存 + 尾随保存，避免在途请求互相造成 CAS 409
 
   // v2.3.2 保存基线：title/content/tags 与最后一次已落库状态相同 ⇒ 不写库、不动列表。
   // 笔记对象被整体替换（加载/新建/解密）时自动重取；草稿恢复属于"待保存变更"，不得重取。
@@ -142,6 +144,7 @@ export function useAutoSave(currentNote, currentTagInput, isDirty, applySavedToL
   }
 
   function markDirty() {
+    editRevision += 1
     if (!isDirty.value) isDirty.value = true
     saveStatus.value = 'editing'
     clearTimeout(savedHideTimer)
@@ -155,7 +158,17 @@ export function useAutoSave(currentNote, currentTagInput, isDirty, applySavedToL
     draftTimer = setTimeout(saveDraft, DRAFT_DELAY)
   }
 
-  async function saveNote(showToast = true, encryptPassword = '') {
+  function enqueueSave(task) {
+    const run = saveQueue.then(task)
+    saveQueue = run.catch(() => {})
+    return run
+  }
+
+  function saveNote(showToast = true, encryptPassword = '') {
+    return enqueueSave(() => performSaveNote(showToast, encryptPassword))
+  }
+
+  async function performSaveNote(showToast = true, encryptPassword = '') {
     if (!currentNote.value) return
     // v21.85：保存前强制同步编辑器防抖窗口内的最新内容（预览态无编辑器时回退现值）
     if (typeof ensureFreshContent === 'function') {
@@ -169,6 +182,7 @@ export function useAutoSave(currentNote, currentTagInput, isDirty, applySavedToL
     // 本次实际提交的字段快照（响应期间用户可能继续编辑原对象）
     const savedTitle = savedNote.title
     const savedContent = savedNote.content
+    const savedRevision = editRevision
     // v2.3.2：与最近一次已落库状态完全一致 ⇒ 不写库、不动 updated_at、不重排列表。
     // 这条兜底独立于编辑器回流守卫：任何路径误置 dirty 都不会再把笔记顶到列表顶部。
     if (!saving.value && isUnchanged(savedNote, savedTags)) {
@@ -210,29 +224,38 @@ export function useAutoSave(currentNote, currentTagInput, isDirty, applySavedToL
       }
       // 仅当本次仍是最新一次保存时才清 dirty，防止旧响应覆盖新状态
       if (seq !== saveSeq) return
-      // v21.150 E7：dirty/定时器复位只作用于仍在编辑的同一篇笔记（迟到响应不得清掉新笔记的自动保存调度）
-      if (currentNote.value?.id === savedNote.id) {
-        isDirty.value = false
-        clearTimeout(autoSaveTimer)
-        clearTimeout(draftTimer)
-      }
-      await clearDraft(savedNote.id)
-      // v21.150 E7：切换窗口内（clearDraft 让渡点）不得把复位打到新笔记上
-      if (currentNote.value?.id === savedNote.id) {
-        // v21.106 P1-1：保存成功即代表冲突/删除状态已不成立（或由后端拒绝前的重试成功），全部复位
+      const sameNote = currentNote.value?.id === savedNote.id
+      const hasNewerEdits = editRevision !== savedRevision
+      if (sameNote) {
+        // 本次保存成功可解除旧冲突；若期间又有输入，必须为最新修订继续安排尾随保存。
         saveConflict.value = false
         remoteDeleted.value = false
         noticeShown = false
       }
-      saveStatus.value = 'saved'
-      clearTimeout(savedHideTimer)
-      savedHideTimer = setTimeout(() => {
-        if (saveStatus.value === 'saved') saveStatus.value = ''
-      }, 2000)
-      if (showToast) message.success('保存成功')
-      // v21.84/v21.150：把新 version 与服务端 updated_at（排序键唯一时间源）同步进列表；
+      if (sameNote && hasNewerEdits) {
+        isDirty.value = true
+        saveStatus.value = 'editing'
+        clearTimeout(autoSaveTimer)
+        autoSaveTimer = setTimeout(() => saveNote(false), AUTO_SAVE_DELAY)
+      } else {
+        if (sameNote) {
+          isDirty.value = false
+          clearTimeout(autoSaveTimer)
+          clearTimeout(draftTimer)
+        }
+        await clearDraft(savedNote.id)
+        if (sameNote) {
+          saveStatus.value = 'saved'
+          clearTimeout(savedHideTimer)
+          savedHideTimer = setTimeout(() => {
+            if (saveStatus.value === 'saved') saveStatus.value = ''
+          }, 2000)
+          if (showToast) message.success('保存成功')
+        }
+      }
+      // 列表始终按本次实际落库快照更新；期间产生的新输入由上面的尾随保存继续处理。
       // 补丁目标固定为 savedNote——根治「快速切换后未编辑项被置顶」
-      applySavedToLists(savedNote.id, savedNote.title, savedNote.content, savedTags, savedNote.version, resp?.data?.updated_at)
+      applySavedToLists(savedNote.id, savedTitle, savedContent, savedTags, savedNote.version, resp?.data?.updated_at)
     } catch (e) {
       if (seq === saveSeq && currentNote.value?.id === savedNote.id) {
         saveStatus.value = 'error'
@@ -260,7 +283,11 @@ export function useAutoSave(currentNote, currentTagInput, isDirty, applySavedToL
     }
   }
 
-  async function saveBeforeSwitch(prevNote) {
+  function saveBeforeSwitch(prevNote) {
+    return enqueueSave(() => performSaveBeforeSwitch(prevNote))
+  }
+
+  async function performSaveBeforeSwitch(prevNote) {
     if (!isDirty.value || !prevNote) return true
     // v21.85：切换前保存同样强制同步最新内容（现流程 prevNote 即 currentNote；
     // 调用方 NotesView.selectNote 入口已先 flush，此处为兜底）
@@ -278,6 +305,7 @@ export function useAutoSave(currentNote, currentTagInput, isDirty, applySavedToL
     }
     const savedTitle = prevNote.title
     const savedContent = prevNote.content
+    const switchRevision = editRevision
     clearTimeout(autoSaveTimer)
     try {
       // v21.72 P2-08：切换前保存同样携带乐观锁版本号
@@ -292,11 +320,17 @@ export function useAutoSave(currentNote, currentTagInput, isDirty, applySavedToL
       if (resp && resp.data && typeof resp.data.version === 'number') {
         prevNote.version = resp.data.version
       }
-      await clearDraft(prevNote.id)
-      // v21.84：切换前保存同样把结果同步进列表（含新 version），防止列表缓存过期版本导致后续 409
-      // v21.150 E7：排序键带服务端 updated_at（单一时间源）
-      applySavedToLists(prevNote.id, prevNote.title, prevNote.content, tags, prevNote.version, resp?.data?.updated_at)
+      // 列表与基线按实际落库快照更新，不混入请求期间的新输入。
+      applySavedToLists(prevNote.id, savedTitle, savedContent, tags, prevNote.version, resp?.data?.updated_at)
       baseline = { id: prevNote.id, title: savedTitle, content: savedContent, tags }
+      if (prevNote === currentNote.value && editRevision !== switchRevision) {
+        // 请求期间又产生编辑：保留 dirty 和草稿，阻止切换并安排尾随保存。
+        isDirty.value = true
+        saveStatus.value = 'editing'
+        autoSaveTimer = setTimeout(() => saveNote(false), AUTO_SAVE_DELAY)
+        return false
+      }
+      await clearDraft(prevNote.id)
       saveStatus.value = 'saved'
       clearTimeout(savedHideTimer)
       savedHideTimer = setTimeout(() => {

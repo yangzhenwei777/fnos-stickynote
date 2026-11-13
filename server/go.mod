@@ -10,7 +10,7 @@ module stickynote
 // 2026-10-29：golang.org/x/net v0.60.0 → v0.62.0（GO-2026-6860 html 文本节点合并 O(n²) /
 //   GO-2026-6866 html 渲染祖先命名空间校验；本项目导入与消毒链经 x/net/html 解析用户内容，
 //   真实暴露，真修复不挂账；连带 x/crypto 0.58.0 / x/sys 0.49.0 / x/text 0.43.0）
-go 1.26.10
+go 1.26.11
 
 require (
 	github.com/gin-contrib/cors v1.7.3

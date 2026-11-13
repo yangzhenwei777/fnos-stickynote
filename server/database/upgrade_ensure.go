@@ -155,8 +155,25 @@ func columnExists(table, column string) (bool, error) {
 	return false, rows.Err()
 }
 
-// compareVersions 比较两个 "X.Y.Z" 格式的版本号
-// 返回: -1 (a<b), 0 (a==b), 1 (a>b)
+// numericVersionSegment 取版本段开头的十进制数字；R1 等后缀不属于迁移序号。
+func numericVersionSegment(s string) int {
+	end := len(s)
+	for i, r := range s {
+		if r < '0' || r > '9' {
+			end = i
+			break
+		}
+	}
+	if end == 0 {
+		return 0
+	}
+	n, _ := strconv.Atoi(s[:end])
+	return n
+}
+
+// compareVersions 比较 "X.Y.Z" 及带预发布后缀的版本号。
+// 返回: -1 (a<b), 0 (a==b), 1 (a>b)。
+// 预发布后缀不参与 schema 迁移序号比较，避免 2.6.5-R1 被误解析成 2.6.0。
 func compareVersions(a, b string) int {
 	pa := strings.Split(a, ".")
 	pb := strings.Split(b, ".")
@@ -169,10 +186,10 @@ func compareVersions(a, b string) int {
 	for i := 0; i < maxLen; i++ {
 		var va, vb int
 		if i < len(pa) {
-			va, _ = strconv.Atoi(pa[i])
+			va = numericVersionSegment(pa[i])
 		}
 		if i < len(pb) {
-			vb, _ = strconv.Atoi(pb[i])
+			vb = numericVersionSegment(pb[i])
 		}
 		if va < vb {
 			return -1

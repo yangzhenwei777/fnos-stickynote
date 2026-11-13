@@ -118,10 +118,10 @@ func TestLoggerConcurrentInitWriteClose(t *testing.T) {
 	wg.Wait()
 	Close()
 
-	// Close 之后 cur() 仍非 nil（Close 不清指针，只关通道+文件）——
-	// 写路径仍可用（getFile 会在 mu 保护下重开文件）。
-	if cur() == nil {
-		t.Fatal("Close 不应把全局指针置 nil（否则运行期日志静默丢失）")
+	// Close 关闭当前实例并清空全局指针；旧实例即使仍被并发写快照持有，
+	// 也不得在 mu 保护下重新打开文件，否则 Windows 下句柄永远无法清理。
+	if cur() != nil {
+		t.Fatal("Close 后当前实例应清空，后续写仅降级 stdout，不得重开旧文件")
 	}
 }
 

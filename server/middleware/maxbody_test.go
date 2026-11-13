@@ -9,7 +9,7 @@ import (
 )
 
 // 动态请求体上限测试（v21.55 P2：跟随前台【单篇笔记上限】配置）
-// 覆盖：X=0 兜底 100MB / 有效 X 带 1.2 倍余量 / 下限 16MB / 封顶 128MB（v21.90 N-04 由 256MB 收敛）/ 缓存刷新。
+// 覆盖：X=0 时业务 100MB + 20% JSON 余量 / 有效 X 带 1.2 倍余量 / 下限 16MB / 封顶 128MB（v21.90 N-04 由 256MB 收敛）/ 缓存刷新。
 
 func setupBodyDB(t *testing.T) func() {
 	t.Helper()
@@ -29,7 +29,7 @@ func resetBodyCache() {
 	dynamicBodyCache.mu.Unlock()
 }
 
-// TestDynamicLimit_ConfigZero 配置 0（不限）→ 100MB 兜底。
+// TestDynamicLimit_ConfigZero 配置 0（不限）→ 100MB 业务正文 + 20% JSON 余量。
 func TestDynamicLimit_ConfigZero(t *testing.T) {
 	cleanup := setupBodyDB(t)
 	defer cleanup()
@@ -37,8 +37,8 @@ func TestDynamicLimit_ConfigZero(t *testing.T) {
 
 	model.SetConfig("max_note_content_kb", "0")
 	limit := DynamicMaxBodyLimit()
-	if limit != 100<<20 {
-		t.Fatalf("X=0 应 100MB 兜底, got %d", limit)
+	if limit != 120<<20 {
+		t.Fatalf("X=0 应为 100MB 正文预留 20%% JSON 余量（120MB）, got %d", limit)
 	}
 }
 

@@ -11,7 +11,7 @@ RUN npm run build
 
 # Stage 2: Build backend
 # 钉版纪律：与工具链一致（CI setup-go 1.26.10），禁 float 小版本
-FROM --platform=$BUILDPLATFORM golang:1.26.10-alpine AS server-build
+FROM --platform=$BUILDPLATFORM golang:1.26.11-alpine AS server-build
 RUN apk add --no-cache git
 WORKDIR /app/server
 COPY server/go.mod server/go.sum ./

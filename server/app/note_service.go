@@ -44,6 +44,7 @@ var (
 type NoteService struct {
 	MaxNotes     int
 	serverEvents bool // true=服务端 Web 路径（version++ + ChangeLog 同事务）；false=桌面本地路径
+	LocalHooks   *LocalSyncHooks
 }
 
 // NewNoteService 桌面/兼容构造（P0-A 语义：不产事件、Delete/Restore/Move 不动 version）。
@@ -109,6 +110,9 @@ func (s *NoteService) CreateNote(userID int64, title, content, tags string, fold
 	if err != nil {
 		return nil, err
 	}
+	if err := s.outboxNote(tx, id, "CREATE"); err != nil {
+		return nil, err
+	}
 	if s.serverEvents {
 		if err := emitNoteChange(tx, userID, id, "CREATE", 1); err != nil {
 			return nil, err
@@ -140,6 +144,9 @@ func (s *NoteService) UpdateNote(id, userID int64, title, content, tags string, 
 	if !s.serverEvents {
 		// 桌面本地写：不 bump、不 CAS（updated_at 照写，version 保持 last-known server 值）
 		if err := model.UpdateNoteLocalTx(tx, id, userID, title, content, tags); err != nil {
+			return nil, err
+		}
+		if err := s.outboxNote(tx, id, "UPDATE"); err != nil {
 			return nil, err
 		}
 		if err := tx.Commit(); err != nil {
@@ -217,6 +224,9 @@ func (s *NoteService) DeleteNote(id, userID int64) error {
 	if err := model.DeleteNoteTx(tx, id, userID); err != nil {
 		return err
 	}
+	if err := s.outboxNote(tx, id, "DELETE"); err != nil {
+		return err
+	}
 	if s.serverEvents {
 		if err := s.finishWriteTx(tx, userID, id, "DELETE", true, 0); err != nil {
 			return err
@@ -235,6 +245,9 @@ func (s *NoteService) RestoreNote(id, userID int64) error {
 	defer tx.Rollback()
 
 	if err := model.RestoreNoteTx(tx, id, userID); err != nil {
+		return err
+	}
+	if err := s.outboxNote(tx, id, "RESTORE"); err != nil {
 		return err
 	}
 	if s.serverEvents {
@@ -257,6 +270,9 @@ func (s *NoteService) MoveNoteToFolder(id, userID int64, folderID *int64) (int64
 	defer tx.Rollback()
 
 	if err := model.MoveNoteToFolderTx(tx, id, userID, folderID); err != nil {
+		return 0, err
+	}
+	if err := s.outboxNote(tx, id, "UPDATE"); err != nil {
 		return 0, err
 	}
 	newVersion := int64(0)
@@ -284,6 +300,9 @@ func (s *NoteService) CopyNoteToFolder(id, userID int64, folderID *int64) (*mode
 
 	newID, err := model.CopyNoteToFolderTx(tx, id, userID, folderID, s.MaxNotes)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.outboxNote(tx, newID, "CREATE"); err != nil {
 		return nil, err
 	}
 	if s.serverEvents {
@@ -355,6 +374,9 @@ func (s *NoteService) BatchDeleteNotes(userID int64, ids []int64) (int, error) {
 				return 0, err
 			}
 		}
+		if err := s.outboxNote(tx, id, "DELETE"); err != nil {
+			return 0, err
+		}
 		deleted++
 	}
 	return deleted, tx.Commit()
@@ -367,8 +389,15 @@ func (s *NoteService) BatchDeleteNotes(userID int64, ids []int64) (int, error) {
 // （真机六轮实锤的回收站不同步根因）。DELETE（软删进回收站）语义不变。
 // 返回 (删除条数, 附件清单, error)；附件清单在删除前收集（fail-closed）。
 func (s *NoteService) EmptyTrash(userID int64) (int, []string, error) {
-	rows, err := database.DB.Query(
-		`SELECT id FROM notes WHERE user_id = ? AND deleted_at IS NOT NULL`, userID)
+	// ID、附件、事件和物理删除必须在同一事务中确定，避免并发恢复/新软删造成
+	// “删除集合、PURGE 事件和附件清单”不一致。
+	tx, err := database.DB.Begin()
+	if err != nil {
+		return 0, nil, err
+	}
+	defer tx.Rollback()
+
+	rows, err := tx.Query(`SELECT id FROM notes WHERE user_id = ? AND deleted_at IS NOT NULL`, userID)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -385,35 +414,31 @@ func (s *NoteService) EmptyTrash(userID int64) (int, []string, error) {
 	if err := rows.Err(); err != nil {
 		return 0, nil, err
 	}
-	var uploadNames []string
-	for _, id := range ids {
-		names, uerr := database.ListNoteUploads(id)
-		if uerr != nil {
-			return 0, nil, fmt.Errorf("list note %d attachments: %w", id, uerr)
-		}
-		uploadNames = append(uploadNames, names...)
-	}
 	if len(ids) == 0 {
 		return 0, nil, nil
 	}
-	tx, err := database.DB.Begin()
-	if err != nil {
-		return 0, nil, err
-	}
-	defer tx.Rollback()
-	if s.serverEvents {
-		for _, id := range ids {
-			var v int64
-			if err := tx.QueryRow(`SELECT version FROM notes WHERE id = ?`, id).Scan(&v); err != nil {
-				return 0, nil, err
-			}
+
+	var uploadNames []string
+	for _, id := range ids {
+		names, err := database.ListNoteUploadsTx(tx, id)
+		if err != nil {
+			return 0, nil, fmt.Errorf("list note %d attachments: %w", id, err)
+		}
+		uploadNames = append(uploadNames, names...)
+		var v int64
+		if err := tx.QueryRow(`SELECT version FROM notes WHERE id = ?`, id).Scan(&v); err != nil {
+			return 0, nil, err
+		}
+		if s.serverEvents {
 			if err := emitNoteChange(tx, userID, id, syncspec.OperationPurge, v); err != nil {
 				return 0, nil, err
 			}
 		}
+		if err := s.outboxNote(tx, id, syncspec.OperationPurge); err != nil {
+			return 0, nil, err
+		}
 	}
-	if _, err := tx.Exec(
-		`DELETE FROM notes WHERE user_id = ? AND deleted_at IS NOT NULL`, userID); err != nil {
+	if _, err := tx.Exec(`DELETE FROM notes WHERE user_id = ? AND deleted_at IS NOT NULL`, userID); err != nil {
 		return 0, nil, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -439,6 +464,9 @@ func (s *NoteService) PermanentDelete(id, userID int64) error {
 		if err := emitNoteChange(tx, userID, id, syncspec.OperationPurge, v); err != nil {
 			return err
 		}
+	}
+	if err := s.outboxNote(tx, id, syncspec.OperationPurge); err != nil {
+		return err
 	}
 	if _, err := tx.Exec(
 		`DELETE FROM notes WHERE id = ? AND user_id = ? AND deleted_at IS NOT NULL`, id, userID); err != nil {

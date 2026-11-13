@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import api, { setTokens, updateAccessToken, getRefreshToken, clearTokens } from '../api/request'
 import { IS_DESKTOP } from '../api/local/transport'
 import { readJSON, writeJSON } from '../utils/storage'
+import { logoutDesktop } from '../api/local/desktopApi'
 import { clearGrants } from '../utils/folderGrants'
 
 // 双通道认证（见 api/request.js）：cookie 为主、Authorization 头兜底。
@@ -108,7 +109,6 @@ export const useAuthStore = defineStore('auth', () => {
     // 凭据其实还躺在盘上 —— 刀 6 修。Go 登出失败时**不**继续清本地态并抛错，
     // 免得又造出一个"看起来登出了"的假状态。
     if (IS_DESKTOP) {
-      const { logoutDesktop } = await import('../api/local/desktopApi')
       await logoutDesktop()
     }
     try {

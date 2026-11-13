@@ -24,6 +24,7 @@ import (
 	"stickynote-desktop/localauth"
 	"stickynote-desktop/localstore"
 	"stickynote-desktop/synclocal"
+	"stickynote/app"
 	"stickynote/database"
 	"stickynote/model"
 )
@@ -1157,14 +1158,44 @@ func (l *LocalService) SyncStatus() (map[string]any, error) {
 	return st, nil
 }
 
-// enqueueNote 本地变异成功后的 Outbox 入队（§25 Dirty 规则；未登录零副作用）。
-func (l *LocalService) enqueueNote(noteID int64, operation string) {
-	if workerPtr() == nil {
-		return
+// localSyncShouldTrack 区分“纯离线单机”与“已绑定远端但 worker 暂时摘下”。
+// 换代期间 worker 可能为 nil，只要档案仍有可恢复凭据，本地编辑仍必须记账。
+func localSyncShouldTrack() bool {
+	if workerPtr() != nil {
+		return true
 	}
-	if err := synclocal.EnqueueNoteOp(database.DB, noteID, operation); err != nil {
-		// 入队失败不回滚业务写（P0-D 过渡语义；P2 Facade 收口为同事务）。
-		log.Printf("[sync] enqueue %s note %d failed: %v", operation, noteID, err)
+	p, err := localauth.Load(database.GetDB())
+	return err == nil && len(p.RefreshSealed) > 0
+}
+
+// newLocalSyncHooks 在 App Facade 的本地事务内写入 Outbox。
+// 任一 hook 失败都会回滚对应业务写，不再沿用提交后仅记日志的过渡语义。
+func newLocalSyncHooks() *app.LocalSyncHooks {
+	return &app.LocalSyncHooks{
+		Note: func(tx *sql.Tx, noteID int64, operation string) error {
+			if !localSyncShouldTrack() {
+				return nil
+			}
+			return synclocal.EnqueueNoteOpTx(tx, noteID, operation)
+		},
+		Folder: func(tx *sql.Tx, folderID int64, operation string) error {
+			if !localSyncShouldTrack() {
+				return nil
+			}
+			return synclocal.EnqueueFolderOpTx(tx, folderID, operation)
+		},
+		FolderDelete: func(tx *sql.Tx, syncID, name string, version int64) error {
+			if !localSyncShouldTrack() {
+				return nil
+			}
+			return synclocal.EnqueueFolderDeleteOpTx(tx, synclocal.FolderRef{SyncID: syncID, Name: name, Version: version})
+		},
+		FolderOrder: func(tx *sql.Tx) error {
+			if !localSyncShouldTrack() {
+				return nil
+			}
+			return synclocal.EnqueueFolderOrderOpTx(tx)
+		},
 	}
 }
 

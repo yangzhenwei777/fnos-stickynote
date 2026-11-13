@@ -509,3 +509,75 @@ describe('v2.3.2 保存前 no-op 守卫', () => {
     expect(updateNote).toHaveBeenCalledWith(1, expect.objectContaining({ content: '<p>draft</p>' }))
   })
 })
+
+describe('R2 在途保存与后续编辑一致性', () => {
+  it('慢请求期间继续输入：旧响应保留 dirty/草稿并串行保存最新内容', async () => {
+    const ctx = makeCtx()
+    ctx.currentNote.value = { id: 1, title: 't', content: '<p>v1</p>', tags: '', is_encrypted: false, version: 1 }
+    ctx.isDirty.value = true
+    const applied = []
+    let resolveFirst
+    updateNote.mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve }))
+    updateNote.mockResolvedValueOnce({ data: { version: 3, updated_at: '2026-11-12T00:00:00Z' } })
+
+    const { saveNote, markDirty } = useAutoSave(ctx.currentNote, ctx.currentTagInput, ctx.isDirty, (...a) => applied.push(a), () => '')
+    const first = saveNote(false)
+    await vi.waitFor(() => expect(updateNote).toHaveBeenCalledTimes(1))
+
+    ctx.currentNote.value.content = '<p>v2-new-edit</p>'
+    markDirty()
+    resolveFirst({ data: { version: 2, updated_at: '2026-11-12T00:00:00Z' } })
+    await first
+
+    expect(ctx.isDirty.value).toBe(true)
+    expect(idbDel).not.toHaveBeenCalled()
+    expect(applied[0][2]).toBe('<p>v1</p>')
+
+    await vi.advanceTimersByTimeAsync(900)
+    await vi.waitFor(() => expect(updateNote).toHaveBeenCalledTimes(2))
+    expect(updateNote.mock.calls[1][1]).toEqual(expect.objectContaining({ content: '<p>v2-new-edit</p>', version: 2 }))
+    await vi.waitFor(() => expect(ctx.isDirty.value).toBe(false))
+    expect(idbDel).toHaveBeenCalled()
+  })
+
+  it('连续手动保存请求严格串行，第二次携带第一次返回的 version', async () => {
+    const ctx = makeCtx()
+    ctx.currentNote.value = { id: 1, title: 't', content: '<p>first</p>', tags: '', is_encrypted: false, version: 1 }
+    let resolveFirst
+    updateNote.mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve }))
+    updateNote.mockResolvedValueOnce({ data: { version: 3 } })
+    const { saveNote } = useAutoSave(ctx.currentNote, ctx.currentTagInput, ctx.isDirty, () => {}, () => '')
+
+    const first = saveNote(false)
+    await vi.waitFor(() => expect(updateNote).toHaveBeenCalledTimes(1))
+    ctx.currentNote.value.content = '<p>second</p>'
+    ctx.isDirty.value = true
+    const second = saveNote(false)
+    expect(updateNote).toHaveBeenCalledTimes(1)
+
+    resolveFirst({ data: { version: 2 } })
+    await first
+    await second
+    expect(updateNote).toHaveBeenCalledTimes(2)
+    expect(updateNote.mock.calls[1][1]).toEqual(expect.objectContaining({ content: '<p>second</p>', version: 2 }))
+  })
+
+  it('切换前保存期间继续输入：阻止切换并保留最新草稿', async () => {
+    const ctx = makeCtx()
+    ctx.currentNote.value = { id: 1, title: 't', content: '<p>before</p>', tags: '', is_encrypted: false, version: 1 }
+    ctx.isDirty.value = true
+    let resolveUpdate
+    updateNote.mockImplementationOnce(() => new Promise((resolve) => { resolveUpdate = resolve }))
+    const { saveBeforeSwitch, markDirty } = useAutoSave(ctx.currentNote, ctx.currentTagInput, ctx.isDirty, () => {}, () => '')
+
+    const switching = saveBeforeSwitch(ctx.currentNote.value)
+    await vi.waitFor(() => expect(updateNote).toHaveBeenCalledTimes(1))
+    ctx.currentNote.value.content = '<p>editing-during-switch</p>'
+    markDirty()
+    resolveUpdate({ data: { version: 2 } })
+
+    expect(await switching).toBe(false)
+    expect(ctx.isDirty.value).toBe(true)
+    expect(idbDel).not.toHaveBeenCalled()
+  })
+})

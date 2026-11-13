@@ -2,16 +2,29 @@
 """便签冒烟测试：认证链路 + XSS 消毒 + JWT 持久化 + 双通道 + gzip/缓存头 + 回收站 + FTS5 搜索与导出（v17）+ v18 安全加固 + v18.4 审查修复（12.8/13 节）+ v18.5 删用户清理上传文件（14 节）+ v18.6 认证闭环（15 节）+ v18.7 P1 八项（16 节）+ v18.8 P2 日常项（17 节）+ v18.9 审计日志（18）+ v19.0 MD导出（19）+ v19.1 配额可视化（20）+ v19.3 P3基建（21）+ v20.0 笔记加密（22）+ v21.86 文件夹（23）+ v21.87 笔记移动/复制（24）"""
 import os
 import http.client, io, json, os, shutil, signal, socket, subprocess, sys, tempfile, time, zipfile, urllib.parse
+import re
 
 BIN = sys.argv[1]                      # Windows 测试二进制路径
 WEB = sys.argv[2]                      # web dist 目录
-PORT = 18904
+def _free_port():
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()
+    return port
+
+PORT = int(os.environ.get("STICKY_TEST_PORT") or _free_port())
 BASE = f"127.0.0.1:{PORT}"
 passed, failed = [], []
 
+def redact(text):
+    text = str(text)
+    text = re.sub(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+", "<redacted-token>", text)
+    return re.sub(r"(?i)(access_token|refresh_token|unlock_token)([\"']?\s*[:=]\s*[\"']?)([^,\s}]+)", r"\1\2<redacted>", text)
+
 def check(name, cond, detail=""):
     (passed if cond else failed).append(name)
-    print(f"  {'PASS' if cond else 'FAIL'}  {name}" + (f"  | {detail}" if detail else ""))
+    print(f"  {'PASS' if cond else 'FAIL'}  {name}" + (f"  | {redact(detail)}" if detail else ""))
 
 def req(method, path, body=None, cookies=None, raw=False, headers=None):
     conn = http.client.HTTPConnection(BASE, timeout=10)

@@ -173,7 +173,11 @@ func applyOp(uid int64, deviceID string, op PushOp) OpResult {
 	if res.Code != CodeAcked {
 		res.RemoteVersion = serverVersion // CONFLICT/ENTITY_GONE 携带远端当前版本（§54 解决基点）
 		// 冲突/不存在也登记（同 op_id 重放语义一致），但实体零副作用。
-		_ = saveOperation(tx, uid, op.OpID, reqHash, res.Code, 0, "")
+		if err := saveOperation(tx, uid, op.OpID, reqHash, res.Code, 0, ""); err != nil {
+			res.Code = "INTERNAL"
+			res.Error = err.Error()
+			return res
+		}
 		if err := tx.Commit(); err != nil {
 			res.Code = "INTERNAL"
 			res.Error = err.Error()
@@ -331,7 +335,9 @@ func opCasUpdate(tx *sql.Tx, uid int64, op PushOp) (int64, int64, string, string
 		return 0, 0, "INTERNAL", err.Error()
 	}
 	var v int64
-	_ = tx.QueryRow(`SELECT version FROM notes WHERE id = ?`, noteID).Scan(&v)
+	if err := tx.QueryRow(`SELECT version FROM notes WHERE id = ?`, noteID).Scan(&v); err != nil {
+		return 0, 0, "INTERNAL", err.Error()
+	}
 	return noteID, v, CodeAcked, ""
 }
 
@@ -381,7 +387,9 @@ func opSoftDelete(tx *sql.Tx, uid int64, op PushOp) (int64, int64, string, strin
 		return 0, rv, code, "base_version mismatch"
 	}
 	var v int64
-	_ = tx.QueryRow(`SELECT version FROM notes WHERE id = ?`, noteID).Scan(&v)
+	if err := tx.QueryRow(`SELECT version FROM notes WHERE id = ?`, noteID).Scan(&v); err != nil {
+		return 0, 0, "INTERNAL", err.Error()
+	}
 	return noteID, v, CodeAcked, ""
 }
 
@@ -404,6 +412,8 @@ func opRestore(tx *sql.Tx, uid int64, op PushOp) (int64, int64, string, string) 
 		return 0, rv, code, "base_version mismatch"
 	}
 	var v int64
-	_ = tx.QueryRow(`SELECT version FROM notes WHERE id = ?`, noteID).Scan(&v)
+	if err := tx.QueryRow(`SELECT version FROM notes WHERE id = ?`, noteID).Scan(&v); err != nil {
+		return 0, 0, "INTERNAL", err.Error()
+	}
 	return noteID, v, CodeAcked, ""
 }

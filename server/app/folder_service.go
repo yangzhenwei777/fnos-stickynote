@@ -24,6 +24,7 @@ import (
 //     服务端版本（Outbox base 口径，synclocal §25 P0-1）。
 type FolderService struct {
 	serverEvents bool
+	LocalHooks   *LocalSyncHooks
 }
 
 func NewFolderService() *FolderService { return &FolderService{} }
@@ -65,6 +66,9 @@ func (s *FolderService) Create(userID int64, name string) (*model.Folder, error)
 	if err != nil {
 		return nil, err
 	}
+	if err := s.outboxFolder(tx, id, "CREATE"); err != nil {
+		return nil, err
+	}
 	if s.serverEvents {
 		if _, err := changelog.AppendFolderChange(tx, userID, id, "CREATE", ""); err != nil {
 			return nil, err
@@ -85,6 +89,9 @@ func (s *FolderService) Rename(id, userID int64, name string) error {
 	defer tx.Rollback()
 
 	if err := model.RenameFolderTx(tx, id, userID, name); err != nil {
+		return err
+	}
+	if err := s.outboxFolder(tx, id, "UPDATE"); err != nil {
 		return err
 	}
 	if s.serverEvents {
@@ -110,6 +117,11 @@ func (s *FolderService) Move(id, userID int64, position string) error {
 	order, changed, err := model.MoveFolderComputeOrderTx(tx, id, userID, position)
 	if err != nil {
 		return err
+	}
+	if len(changed) > 0 {
+		if err := s.outboxFolderOrder(tx); err != nil {
+			return err
+		}
 	}
 	if s.serverEvents && len(changed) > 0 {
 		versions := make([]syncspec.FolderVersionRef, 0, len(order))
@@ -148,6 +160,14 @@ func (s *FolderService) Delete(id, userID int64) error {
 	info, repointed, err := model.DeleteFolderTx(tx, id, userID)
 	if err != nil {
 		return err
+	}
+	if err := s.outboxFolderDelete(tx, info.SyncID, info.Name, info.Version); err != nil {
+		return err
+	}
+	for _, nid := range repointed {
+		if err := s.outboxNote(tx, nid, "UPDATE"); err != nil {
+			return err
+		}
 	}
 	if s.serverEvents {
 		seq, err := changelog.NextChangeSeq(tx)

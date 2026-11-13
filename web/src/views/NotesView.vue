@@ -1,13 +1,6 @@
 <!--
-  文件行数豁免登记（开发纪律 §5.1）
-  ─────────────────────────────────────────────────────────────
-  当前行数：以机器门禁实测为准（2.3.2 基线实测 1049；原登记 835、注释 938 均已失真，
-           本注释不再手写行数——见 docs/技术债清单.md 2026-11-03 修正条）
-  豁免原因：2026-10-15 滚动续载轮增量（触底接线 + 尾部两态，+25 行）；
-           本轮同时改 useNotes/单测，再拆本文件会叠加回归风险，维持 TD-003 挂账。
-  拆分计划：非硬拆分。下个独立重构窗口把移动端抽屉侧栏或某段弹窗模板抽成子组件，
-           优先级高于普通功能轮的顺手拆分。
-  追踪：docs/技术债清单.md · TD-003
+  主工作区：查看/编辑/预览与笔记列表编排。
+  编辑器按需异步加载，降低阅读态首屏资源量；业务状态由 useNotesView 管理。
 -->
 <template>
   <div
@@ -498,8 +491,9 @@
 // 样式外置于 styles/notes-view.css（历史既定），历史修复点见 useNotesView.js 内注释。
 import { Plus, Delete, Document, EditPen, Lock, Unlock, View, Download, Upload, ArrowLeft, ArrowRight, MoreFilled, FolderOpened, CopyDocument, Loading, Picture, Clock, Share } from '@element-plus/icons-vue'
 import { formatDate } from '@/utils/note'
+import { defineAsyncComponent } from 'vue'
 import { IS_DESKTOP } from '@/api/local/transport'
-import TiptapEditor from '@/components/TiptapEditor.vue'
+const TiptapEditor = defineAsyncComponent(() => import('@/components/TiptapEditor.vue'))
 import NoteSidebar from '@/components/NoteSidebar.vue'
 import NoteImagePreview from '@/components/NoteImagePreview.vue'
 import DragResizer from '@/components/DragResizer.vue'

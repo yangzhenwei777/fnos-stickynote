@@ -16,6 +16,10 @@ on:
         required: false
         default: ""
 
+permissions:
+  contents: read
+  actions: read
+
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -33,28 +37,45 @@ jobs:
         shell: bash
         run: |
           if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+              echo "非法 tag $GITHUB_REF_NAME（应为 vX.Y.Z）"; exit 1;
+            }
             V="${GITHUB_REF_NAME#v}"
-            MM="$(echo "$V" | grep -oE '^[0-9]+\.[0-9]+')"
-            if [[ -z "$V" || -z "$MM" ]]; then
-              echo "❌ 非法 tag 格式 $GITHUB_REF_NAME（应为 v<语义版本>）"; exit 1
-            fi
-            echo "tags=davyang/sticky-note:${V},davyang/sticky-note:${MM},davyang/sticky-note:latest" >> "$GITHUB_OUTPUT"
+            MM="${V%.*}"
           else
             V="${{ inputs.version }}"
             if [[ -n "$V" && "$V" != "edge" ]]; then
-              MM="$(echo "$V" | grep -oE '^[0-9]+\.[0-9]+')"
-              if [[ -z "$V" || -z "$MM" ]]; then
-                echo "❌ 非法版本 $V（应为 X.Y.Z）"; exit 1
-              fi
-              echo "tags=davyang/sticky-note:${V},davyang/sticky-note:${MM},davyang/sticky-note:latest" >> "$GITHUB_OUTPUT"
+              [[ "$V" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+                echo "非法版本 $V（应为 X.Y.Z）"; exit 1;
+              }
+              MM="${V%.*}"
             else
               V="edge"
-              echo "tags=davyang/sticky-note:edge" >> "$GITHUB_OUTPUT"
+              MM=""
             fi
+          fi
+          # 正式版本必须唯一对应仓内 VERSION；edge 仅用于演练，不发布 latest。
+          if [[ "$V" != "edge" ]]; then
+            [[ "$V" == "$(cat VERSION)" ]] || {
+              echo "发布版本 $V 与 VERSION($(cat VERSION)) 不一致"; exit 1;
+            }
+            echo "tags=davyang/sticky-note:${V},davyang/sticky-note:${MM},davyang/sticky-note:latest" >> "$GITHUB_OUTPUT"
+          else
+            echo "tags=davyang/sticky-note:edge" >> "$GITHUB_OUTPUT"
           fi
           echo "version=${V}" >> "$GITHUB_OUTPUT"
           echo "created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
           echo "sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: 正式版本同提交 CI 成功门禁
+        if: steps.meta.outputs.version != 'edge'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ok="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${GITHUB_SHA}&status=success&per_page=1" --jq '.total_count')"
+          [[ "$ok" =~ ^[0-9]+$ && "$ok" -ge 1 ]] || {
+            echo "当前提交没有成功的 CI 运行，禁止发布正式镜像"; exit 1;
+          }
 
       - name: 凭据自检（不输出任何值，仅校验长度与非法字符）
         env:
@@ -73,7 +94,41 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: 构建并推送多架构镜像
+      - name: 构建 amd64 候选镜像（不推送）
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+            BUILD_TIME=${{ steps.meta.outputs.created }}
+            GIT_COMMIT=${{ steps.meta.outputs.sha }}
+          tags: davyang/sticky-note:candidate-${{ github.sha }}-amd64
+          cache-from: type=gha,scope=amd64
+          cache-to: type=gha,mode=max,scope=amd64
+
+      - name: amd64 候选容器实启
+        run: bash scripts/docker-smoke.sh davyang/sticky-note:candidate-${{ github.sha }}-amd64 linux/amd64 "${{ steps.meta.outputs.version }}"
+
+      - name: 构建 arm64 候选镜像（不推送）
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/arm64
+          load: true
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+            BUILD_TIME=${{ steps.meta.outputs.created }}
+            GIT_COMMIT=${{ steps.meta.outputs.sha }}
+          tags: davyang/sticky-note:candidate-${{ github.sha }}-arm64
+          cache-from: type=gha,scope=arm64
+          cache-to: type=gha,mode=max,scope=arm64
+
+      - name: arm64 候选容器实启（QEMU）
+        run: bash scripts/docker-smoke.sh davyang/sticky-note:candidate-${{ github.sha }}-arm64 linux/arm64 "${{ steps.meta.outputs.version }}"
+
+      - name: 双架构验证通过后构建并推送正式多架构镜像
         id: build
         uses: docker/build-push-action@v6
         with:
@@ -85,18 +140,6 @@ jobs:
             BUILD_TIME=${{ steps.meta.outputs.created }}
             GIT_COMMIT=${{ steps.meta.outputs.sha }}
           tags: ${{ steps.meta.outputs.tags }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: 容器实启冒烟（amd64 实启 + /api/health 200）
-        run: |
-          docker run -d --name sn-smoke -p 13389:13389 "davyang/sticky-note:${{ steps.meta.outputs.version }}"
-          for i in $(seq 1 30); do
-            if curl -fsS http://localhost:13389/api/health; then
-              echo; echo "✅ 容器冒烟通过（health 200）"; exit 0
-            fi
-            sleep 2
-          done
-          echo "❌ 容器冒烟失败，容器日志如下："
-          docker logs sn-smoke
-          exit 1
+          cache-from: |
+            type=gha,scope=amd64
+            type=gha,scope=arm64

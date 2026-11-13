@@ -1,11 +1,11 @@
 ================================================================================
-Sticky note 依赖清单（SBOM）— StickyNote-2.6.3（v? / VERSION 2.6.3）
+Sticky note 依赖清单（SBOM）— StickyNote-2.6.6（v? / VERSION 2.6.6）
 ================================================================================
-生成日期：2026-11-05
+生成日期：2026-11-12
 生成器：scripts/sbom_gate.py --gen（本文件由脚本生成，请勿手改；依赖有变动请重跑并同步交付面副本）
 生成方式：
   Go ：cd server && go list -m all            → 74 行（主模块 + 全部间接依赖）
-  npm：web/package.json 声明区间 + node_modules 实装版本 → 42 项直接依赖（27 dependencies + 15 devDependencies）
+  npm：web/package.json 声明区间 + node_modules 实装版本 → 44 项直接依赖（27 dependencies + 17 devDependencies）
 
 【对比口径】与上一版对比须**逐包比名称与区间**，行数相等不等于零变更；本清单由 `scripts/sbom_gate.py --check` 与权威树交叉核对（CI backend job 常驻）。
 【范围】NAS fpk 交付面（server + web）。desktop 模块（Wails/x-crypto 等）依赖树由 CI 单列 `依赖清单-desktop.txt`（artifact），不入本清单。
@@ -90,7 +90,7 @@ modernc.org/token v1.1.0
 rsc.io/pdf v0.1.1
 
 
-二、npm 直接依赖清单（42 项；名称 / 声明区间 / 实装版本）
+二、npm 直接依赖清单（44 项；名称 / 声明区间 / 实装版本）
 ================================================================================
 [dependencies] 27 项
 @element-plus/icons-vue                      ^2.3.0       2.3.2
@@ -121,7 +121,7 @@ qrcode                                       ^1.5.4       1.5.4
 vue                                          ^3.5.0       3.5.44
 vue-router                                   ^4.4.0       4.6.4
 
-[devDependencies] 15 项
+[devDependencies] 17 项
 @eslint/js                                   ^10.0.1      10.0.1
 @vitejs/plugin-vue                           ^6.0.8       6.0.10
 @vue/test-utils                              ^2.4.11      2.5.1
@@ -130,7 +130,9 @@ eslint                                       ^10.8.0      10.14.0
 eslint-plugin-vue                            ^10.10.0     10.12.0
 globals                                      ^17.9.0      17.13.0
 jsdom                                        ^30.0.1      30.1.3
+postcss-html                                 ^1.8.0       1.8.0
 prettier                                     ^3.9.6       3.9.10
+stylelint                                    ^16.25.0     16.25.0
 unplugin-auto-import                         ^21.0.0      21.1.0
 unplugin-vue-components                      ^32.1.0      32.1.0
 vite                                         ^8.2.4       8.3.4

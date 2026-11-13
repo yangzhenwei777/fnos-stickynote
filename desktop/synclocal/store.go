@@ -155,8 +155,15 @@ func randID() string {
 
 // ---- 载荷构造（本地权威行 → canonical payload，字段与 sync.NotePayload 对齐） ----
 
+// syncQueryer 同时满足 *sql.DB 与 *sql.Tx，确保 payload 可在业务事务内构造。
+type syncQueryer interface {
+	QueryRow(query string, args ...any) *sql.Row
+	Query(query string, args ...any) (*sql.Rows, error)
+	Exec(query string, args ...any) (sql.Result, error)
+}
+
 // BuildNotePayload 从本地 notes 行读业务状态（含软删行；RESTORE/DELETE 需要墓碑态）。
-func BuildNotePayload(db *sql.DB, noteID int64) (string, error) {
+func BuildNotePayload(db syncQueryer, noteID int64) (string, error) {
 	var (
 		p struct {
 			SyncID       string     `json:"sync_id"`
@@ -199,14 +206,19 @@ func BuildNotePayload(db *sql.DB, noteID int64) (string, error) {
 	}
 	rows, err := db.Query(`SELECT u.filename, COALESCE(up.size, 0) FROM note_uploads u
 		LEFT JOIN uploads up ON up.filename = u.filename WHERE u.note_id = ?`, noteID)
-	if err == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var r refRow
-			if rows.Scan(&r.Filename, &r.Size) == nil {
-				p.Refs = append(p.Refs, r)
-			}
+	if err != nil {
+		return "", fmt.Errorf("build local payload note %d attachments: %w", noteID, err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var r refRow
+		if err := rows.Scan(&r.Filename, &r.Size); err != nil {
+			return "", fmt.Errorf("scan local payload note %d attachments: %w", noteID, err)
 		}
+		p.Refs = append(p.Refs, r)
+	}
+	if err := rows.Err(); err != nil {
+		return "", fmt.Errorf("iterate local payload note %d attachments: %w", noteID, err)
 	}
 	type refOut struct {
 		Filename string `json:"filename"`
@@ -232,7 +244,10 @@ func BuildNotePayload(db *sql.DB, noteID int64) (string, error) {
 	for _, r := range p.Refs {
 		out.AttachmentRefs = append(out.AttachmentRefs, refOut{Filename: r.Filename, Size: r.Size})
 	}
-	b, _ := json.Marshal(out)
+	b, err := json.Marshal(out)
+	if err != nil {
+		return "", fmt.Errorf("marshal local payload note %d: %w", noteID, err)
+	}
 	return string(b), nil
 }
 
@@ -244,7 +259,7 @@ type refRow struct {
 // EnqueueNoteOp 本地变异后入队（§25 Dirty 规则：与业务写同一调用栈内完成入队；
 // 严格同事务在 P2 Facade 收口时并入，P0-D 以"写库成功后立即入队 + 失败上抛"过渡）。
 // 同实体连续 PENDING 由批构造合并（§49），此处不判重。
-func EnqueueNoteOp(db *sql.DB, noteID int64, operation string) error {
+func EnqueueNoteOp(db syncQueryer, noteID int64, operation string) error {
 	payload, err := BuildNotePayload(db, noteID)
 	if err != nil {
 		return err
@@ -258,6 +273,11 @@ func EnqueueNoteOp(db *sql.DB, noteID int64, operation string) error {
 	_, err = db.Exec(`INSERT INTO sync_outbox (op_id, entity_type, entity_sync_id, operation, base_version, payload)
 		VALUES (?, 'NOTE', ?, ?, ?, ?)`, randID(), syncID, operation, base, payload)
 	return err
+}
+
+// EnqueueNoteOpTx 在本地业务事务内构造并入队；失败由调用方回滚整个业务事务。
+func EnqueueNoteOpTx(tx *sql.Tx, noteID int64, operation string) error {
+	return EnqueueNoteOp(tx, noteID, operation)
 }
 
 // IsDirty §20：是否有未同步操作。
@@ -280,7 +300,7 @@ type FolderRef struct {
 }
 
 // GetFolderRef 读本地文件夹引用（无 sync_id 视为未初始化，ok=false）。
-func GetFolderRef(db *sql.DB, folderID int64) (FolderRef, bool) {
+func GetFolderRef(db syncQueryer, folderID int64) (FolderRef, bool) {
 	var r FolderRef
 	var syncID sql.NullString
 	var encrypted int
@@ -295,33 +315,49 @@ func GetFolderRef(db *sql.DB, folderID int64) (FolderRef, bool) {
 }
 
 // EnqueueFolderOp CREATE/UPDATE 入队：base = 本地 version（最后已知服务端版本，§25 P0-1）。
-func EnqueueFolderOp(db *sql.DB, folderID int64, operation string) error {
+func EnqueueFolderOp(db syncQueryer, folderID int64, operation string) error {
 	r, ok := GetFolderRef(db, folderID)
 	if !ok {
 		return fmt.Errorf("folder %d missing sync_id (client schema not migrated?)", folderID)
 	}
 	enc := r.IsEncrypted
 	hash := r.Hash
-	payload, _ := json.Marshal(syncspec.FolderPayload{
+	payload, err := json.Marshal(syncspec.FolderPayload{
 		SyncID: r.SyncID, Name: r.Name, Version: r.Version,
 		IsEncrypted: &enc, EncryptPasswordHash: &hash,
 	})
-	_, err := db.Exec(`INSERT INTO sync_outbox (op_id, entity_type, entity_sync_id, operation, base_version, payload)
+	if err != nil {
+		return fmt.Errorf("marshal folder %d payload: %w", folderID, err)
+	}
+	_, err = db.Exec(`INSERT INTO sync_outbox (op_id, entity_type, entity_sync_id, operation, base_version, payload)
 		VALUES (?, 'FOLDER', ?, ?, ?, ?)`, randID(), r.SyncID, operation, r.Version, string(payload))
 	return err
 }
 
+// EnqueueFolderOpTx 在文件夹业务事务内入队。
+func EnqueueFolderOpTx(tx *sql.Tx, folderID int64, operation string) error {
+	return EnqueueFolderOp(tx, folderID, operation)
+}
+
 // EnqueueFolderDeleteOp DELETE 入队（调用方在物理删前用 GetFolderRef 捕获引用）。
-func EnqueueFolderDeleteOp(db *sql.DB, r FolderRef) error {
-	payload, _ := json.Marshal(syncspec.FolderPayload{SyncID: r.SyncID, Name: r.Name, Version: r.Version})
-	_, err := db.Exec(`INSERT INTO sync_outbox (op_id, entity_type, entity_sync_id, operation, base_version, payload)
+func EnqueueFolderDeleteOp(db syncQueryer, r FolderRef) error {
+	payload, err := json.Marshal(syncspec.FolderPayload{SyncID: r.SyncID, Name: r.Name, Version: r.Version})
+	if err != nil {
+		return fmt.Errorf("marshal deleted folder %s payload: %w", r.SyncID, err)
+	}
+	_, err = db.Exec(`INSERT INTO sync_outbox (op_id, entity_type, entity_sync_id, operation, base_version, payload)
 		VALUES (?, 'FOLDER', ?, 'DELETE', ?, ?)`, randID(), r.SyncID, r.Version, string(payload))
 	return err
 }
 
+// EnqueueFolderDeleteOpTx 在文件夹删除事务内写入墓碑操作。
+func EnqueueFolderDeleteOpTx(tx *sql.Tx, r FolderRef) error {
+	return EnqueueFolderDeleteOp(tx, r)
+}
+
 // EnqueueFolderOrderOp 本地重排后入队集合级 op：全序数组 + 逐 folder base（§55）。
 // entity_sync_id 为空串（服务端按单例键判重，ADR-002 R4）。
-func EnqueueFolderOrderOp(db *sql.DB) error {
+func EnqueueFolderOrderOp(db syncQueryer) error {
 	rows, err := db.Query(`SELECT sync_id, version FROM note_folders WHERE sync_id IS NOT NULL AND sync_id != '' ORDER BY sort_order ASC, id ASC`)
 	if err != nil {
 		return err
@@ -341,10 +377,18 @@ func EnqueueFolderOrderOp(db *sql.DB) error {
 	if err := rows.Err(); err != nil {
 		return err
 	}
-	payload, _ := json.Marshal(syncspec.FolderOrderPayload{Order: order, Bases: bases})
+	payload, err := json.Marshal(syncspec.FolderOrderPayload{Order: order, Bases: bases})
+	if err != nil {
+		return fmt.Errorf("marshal folder order payload: %w", err)
+	}
 	_, err = db.Exec(`INSERT INTO sync_outbox (op_id, entity_type, entity_sync_id, operation, base_version, payload)
 		VALUES (?, 'FOLDER_ORDER', '', 'UPDATE', NULL, ?)`, randID(), string(payload))
 	return err
+}
+
+// EnqueueFolderOrderOpTx 在文件夹排序事务内入队。
+func EnqueueFolderOrderOpTx(tx *sql.Tx) error {
+	return EnqueueFolderOrderOp(tx)
 }
 
 // addConflict 记一条冲突。entityType/operation 是处置面的前提（applyNoteChange/applyFolderChange
@@ -360,13 +404,22 @@ func addConflict(db *sql.Tx, entitySyncID, entityType, operation, kind, localP, 
 func Status(db *sql.DB) (map[string]any, error) {
 	out := map[string]any{}
 	for _, k := range []string{"cursor", "server_epoch", "server_instance_id", "last_sync_at"} {
-		v, _ := getState(db, k)
+		v, err := getState(db, k)
+		if err != nil {
+			return nil, fmt.Errorf("read sync status %s: %w", k, err)
+		}
 		out[k] = v
 	}
 	var pending, open, total int
-	_ = db.QueryRow(`SELECT COUNT(*) FROM sync_outbox WHERE status IN ('PENDING','SENDING','FAILED')`).Scan(&pending)
-	_ = db.QueryRow(`SELECT COUNT(*) FROM sync_conflicts WHERE status='open'`).Scan(&open)
-	_ = db.QueryRow(`SELECT COUNT(*) FROM sync_conflicts`).Scan(&total)
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sync_outbox WHERE status IN ('PENDING','SENDING','FAILED')`).Scan(&pending); err != nil {
+		return nil, fmt.Errorf("count pending outbox: %w", err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sync_conflicts WHERE status='open'`).Scan(&open); err != nil {
+		return nil, fmt.Errorf("count open conflicts: %w", err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sync_conflicts`).Scan(&total); err != nil {
+		return nil, fmt.Errorf("count all conflicts: %w", err)
+	}
 	out["pending_ops"] = pending
 	// conflict_count 语义（刀1 起）= **待处置**条数；历史总量另给 conflict_total，
 	// 避免已处置冲突继续在前端亮红。

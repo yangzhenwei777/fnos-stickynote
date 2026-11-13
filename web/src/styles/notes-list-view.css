@@ -1,7 +1,7 @@
-/* NotesListView 列表页样式（2026-11-03 巨型 Vue 拆分 刀6，自 <style scoped> 原样迁出）。
+/* NotesListView 列表页样式（2026-11-03 巨型 Vue 拆分 刀6，自 Vue scoped 样式原样迁出）。
    一律以 .notes-list-container 前缀限定作用域——page-title/search-box/create-btn/import-btn/
    empty-container 等类名在 NotesView/Login 等处各有同名定义，禁止去掉前缀。
-   原 :deep(X) 已转普通后代选择器；:global(.nl-f-*) 项原样保留。 */
+   原 :deep(X) 已转普通后代选择器；Teleport 下拉项使用普通全局类选择器。 */
 .notes-list-container {
   padding: 24px 32px;
 }
@@ -57,15 +57,15 @@
   flex-shrink: 0;
 }
 .notes-list-container /* 下拉项（Teleport 到 body，需全局选择器） */
-:global(.nl-f-item) {
+.nl-f-item {
   flex: 1;
 }
-:global(.nl-f-check) {
+.nl-f-check {
   color: var(--primary-color);
   margin-left: auto;
 }
 .notes-list-container /* v21.96 需求：新建文件夹菜单项图标（与 PC 端侧栏 + 图标风格一致） */
-:global(.nl-f-new-icon) {
+.nl-f-new-icon {
   color: var(--primary-color);
   margin-right: 6px;
 }

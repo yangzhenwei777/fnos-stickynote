@@ -4,7 +4,7 @@ module stickynote-desktop
 //   desktop 依赖 golang.org/x/net（indirect），随 server 联动升至 v0.62.0。
 // 2026-10-21：1.26.9 → 1.26.10（GO-2026-6809 crypto/x509，同 server 联动，零代码逻辑改动）
 // 2026-10-29：golang.org/x/net 0.60.0 → 0.62.0（GO-2026-6860/6866，同 server 联动）
-go 1.26.10
+go 1.26.11
 
 require (
 	github.com/gin-gonic/gin v1.10.1

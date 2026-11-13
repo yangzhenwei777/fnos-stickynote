@@ -11,7 +11,7 @@
 # 用法：
 #   powershell -NoProfile -ExecutionPolicy Bypass -File desktop\scripts\build-desktop.ps1
 #   （历史兼容开关 [-RequireNSIS]：仅历史追溯时需要，默认不构建安装器）
-# 环境要求：go 1.26.7、node 22+、wails CLI v2.16.0 钉版（go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0）
+# 环境要求：go 1.26.11、node 22+、wails CLI v2.16.0 钉版（go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0）
 
 param([switch]$RequireNSIS, [switch]$AllowSystemWebView2)
 $ErrorActionPreference = 'Stop'
@@ -100,6 +100,7 @@ $json = $cfg | ConvertTo-Json -Depth 8
 #    若 build\bin\webview2-runtime.tar.xz 已存在且内部 manifest 版本匹配，直接复用（跳过裁剪/重压）。
 #    缺 runtime 默认**硬失败**（-AllowSystemWebView2 显式放行，仅用于临时调试）。
 $WV2_VERSION = '156.0.4314.50'
+$WV2_PREPACK_SHA256 = '1f8ac7ef092a5c0ef61cb3edcb829569be48c3c37196f05f449cd6c86f97b32b'
 function Get-Wv2Version([string]$dir) {
     $exe = Join-Path $dir 'msedgewebview2.exe'
     if (-not (Test-Path $exe)) { return '' }
@@ -135,7 +136,9 @@ if ($wv2Src) { Write-Host "  webview2-runtime source = $wv2Src (v$WV2_VERSION)" 
 
 $xzReady = Test-Wv2Xz $xzPath $WV2_VERSION
 if ($xzReady) {
-    Write-Host ("  reuse existing webview2-runtime.tar.xz (v$WV2_VERSION, {0} MB)" -f [math]::Round((Get-Item $xzPath).Length / 1MB, 1))
+    $actualHash = (Get-FileHash $xzPath -Algorithm SHA256).Hash.ToLower()
+    if ($actualHash -ne $WV2_PREPACK_SHA256) { throw "预打包 WebView2 runtime SHA256 不符: $actualHash" }
+    Write-Host "  webview2-runtime.tar.xz SHA256 verified"
 } elseif ($wv2Src) {
     # v21.194 方案 A（包体积瘦身）：裁剪 Locales 至 zh-CN/en-US + 去 WidevineCdm，再 tar.xz。
     Write-Host "  webview2-runtime pinned ($WV2_VERSION) -> trim (Locales zh-CN/en-US, no WidevineCdm) + tar.xz"

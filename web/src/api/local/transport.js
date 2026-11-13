@@ -41,18 +41,20 @@ const ERROR_RULES = [
 ]
 
 function toHttpError (config, e) {
-  const msg = (e && e.message) || String(e)
-  let status = 500
-  let code = ''
+  const structured = (e && e.data) || (e && e.response && e.response.data) || {}
+  const msg = structured.error || (e && e.message) || String(e)
+  let status = Number(structured.status || (e && e.status)) || 0
+  let code = structured.code || ''
   let userMsg = msg
   for (const [re, st, cd, um] of ERROR_RULES) {
     if (re.test(msg)) {
-      status = st
-      code = cd
-      if (um) userMsg = um
+      if (!status) status = st
+      if (!code) code = cd
+      if (um && !structured.error) userMsg = um
       break
     }
   }
+  if (!status) status = 500
   const err = new Error(msg)
   err.config = config
   err.response = {
