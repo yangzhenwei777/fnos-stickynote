@@ -384,8 +384,13 @@ jobs:
         shell: pwsh
         run: |
           $actual = (Get-FileHash "desktop/build/bin/webview2-runtime.tar.xz" -Algorithm SHA256).Hash.ToLower()
-          $expected = "1f8ac7ef092a5c0ef61cb3edcb829569be48c3c37196f05f449cd6c86f97b32b"
-          if ($actual -ne $expected) { throw "WebView2 runtime SHA256 mismatch: $actual" }
+          # 1f8ac... = 本地交付裁剪包；6980... = CI 缓存中的 156.0.4314.50 包。
+          # 两者均继续由 build-desktop 的版本 manifest、构建与 zip runtime gate 校验。
+          $expected = @(
+            "1f8ac7ef092a5c0ef61cb3edcb829569be48c3c37196f05f449cd6c86f97b32b",
+            "698028079722165e12dd5df12f5476fa20bd5b2e6a2f07aeb4e4d6db636b8395"
+          )
+          if ($expected -notcontains $actual) { throw "WebView2 runtime SHA256 mismatch: $actual" }
       - name: build-desktop.ps1（绿色版 zip + 版本注入断言）
         run: |
           cd web && npm ci --registry=https://registry.npmjs.org && cd ..
