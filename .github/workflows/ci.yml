@@ -26,9 +26,15 @@ on:
 permissions:
   contents: read
 
+# 避免同一分支/ref 上重复 push 产生并发 CI 堆积；tag/正式发布不受影响。
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   backend:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -43,6 +49,9 @@ jobs:
           # 关闭后模块需每轮重下（go proxy 命中，约 +1~2min），换取 CI 不再因配额红。
           # 若将来升级付费计划，可去掉本行恢复缓存。
           cache: false
+      - name: CI preflight (元数据/EOF/WebView2 哈希一致性)
+        # 与 scripts/ci_preflight.py 同源；先拦低级漂移，再进入正式构建链。
+        run: python3 scripts/ci_preflight.py --quick
       - name: version consistency check (纪律 1.1/1.4)
         # 第四轮审计 P1：VERSION 与 fnpack/manifest 曾漂移（1.0.73 vs 1.0.62）
         # 强制同步，防止再次发生
@@ -132,8 +141,12 @@ jobs:
           python3 -c "import sys; f={'handler':(float('${hcov}'),40.0),'model':(float('${mcov}'),50.0),'backup':(float('${bcov}'),55.0),'restore':(float('${rcov}'),60.0),'webdav':(float('${wcov}'),55.0),'middleware':(float('${ccov}'),45.0),'auth':(float('${acov}'),65.0)}; [print(f'{k}: {a:.1f}% (floor {b:.0f}%)', 'PASS' if a>=b else 'FAIL') for k,(a,b) in f.items()]; bad=[k for k,(a,b) in f.items() if a<b]; print('COVERAGE GATE', 'FAIL '+str(bad) if bad else 'PASS'); sys.exit(1 if bad else 0)"
         working-directory: server
       - name: govulncheck (baseline diff, 纪律 3.2)
-        # 钉 v1.6.0（与本地一致）；go install 装到 GOPATH/bin，用绝对路径调用
+        # 钉 v1.6.0（与本地一致）；go install 装到 GOPATH/bin，用绝对路径调用。
+        # 扫描前先确认工具与模块可见：避免“govulncheck 找不到 go/go.mod”被误读为无漏洞。
         run: |
+          set -euo pipefail
+          go version
+          test -s go.mod
           go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
           "$(go env GOPATH)/bin/govulncheck" -json ./... | python3 ../scripts/vuln_gate.py --mode go --baseline ../docs/vuln_baseline_go.txt
         working-directory: server
@@ -215,6 +228,7 @@ jobs:
   frontend:
     needs: backend
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -238,8 +252,10 @@ jobs:
         run: npm run lint -- --max-warnings=0
         working-directory: web
       - name: npm audit (baseline diff, 纪律 3.2)
-        # 必须走官方源——npmmirror 未实现 audit 端点；基线只拦新增（在案 vite/esbuild 挂账）
+        # 必须走官方源——npmmirror 未实现 audit 端点；基线只拦新增（在案 vite/esbuild 挂账）。
+        # pipefail 防止 npm audit 失败但 python gate 正常退出造成假绿。
         run: |
+          set -euo pipefail
           npm audit --json --registry=https://registry.npmjs.org | python3 ../scripts/vuln_gate.py --mode npm --baseline ../docs/vuln_baseline_npm.txt
         working-directory: web
       - name: restore server binary
@@ -283,6 +299,7 @@ jobs:
   # 不再只是"本地跑一遍"。含 DDL 同构校验门禁（synclocal schema_parity，批次 3/6 掩盖事故根治）。
   desktop:
     runs-on: windows-latest
+    timeout-minutes: 25
     defaults:
       run:
         shell: bash
@@ -329,6 +346,9 @@ jobs:
         env:
           PYTHONIOENCODING: utf-8
         run: |
+          set -euo pipefail
+          go version
+          test -s go.mod
           go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
           cd desktop && "$(go env GOPATH)/bin/govulncheck" -json ./... | python ../scripts/vuln_gate.py --mode go --baseline ../docs/vuln_baseline_desktop_go.txt
       - name: desktop SBOM 清单 (wails 依赖树单列，不污染 NAS 基线 Go79/npm41)

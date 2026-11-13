@@ -16,6 +16,11 @@ on:
         required: false
         default: ""
 
+# 防止同一 tag/ref 的发布流水线并发执行；不取消进行中的正式发布。
+concurrency:
+  group: docker-publish-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
   actions: read
