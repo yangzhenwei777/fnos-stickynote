@@ -141,14 +141,33 @@ jobs:
           python3 -c "import sys; f={'handler':(float('${hcov}'),40.0),'model':(float('${mcov}'),50.0),'backup':(float('${bcov}'),55.0),'restore':(float('${rcov}'),60.0),'webdav':(float('${wcov}'),55.0),'middleware':(float('${ccov}'),45.0),'auth':(float('${acov}'),65.0)}; [print(f'{k}: {a:.1f}% (floor {b:.0f}%)', 'PASS' if a>=b else 'FAIL') for k,(a,b) in f.items()]; bad=[k for k,(a,b) in f.items() if a<b]; print('COVERAGE GATE', 'FAIL '+str(bad) if bad else 'PASS'); sys.exit(1 if bad else 0)"
         working-directory: server
       - name: govulncheck (baseline diff, 纪律 3.2)
-        # 钉 v1.6.0（与本地一致）；go install 装到 GOPATH/bin，用绝对路径调用。
         # 扫描前先确认工具与模块可见：避免“govulncheck 找不到 go/go.mod”被误读为无漏洞。
+        # 退出码裁决（2026-11-13）：govulncheck 发现漏洞时退出码 3（含基线内漏洞），
+        # 不能因 pipefail 直接判死；先落盘扫描 JSON，由 vuln_gate 按基线裁决，
+        # gate 通过时仅放行 rc∈{0,3}，其余（工具故障）仍然失败——不做假绿。
         run: |
           set -euo pipefail
           go version
           test -s go.mod
           go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
-          "$(go env GOPATH)/bin/govulncheck" -json ./... | python3 ../scripts/vuln_gate.py --mode go --baseline ../docs/vuln_baseline_go.txt
+          set +e
+          "$(go env GOPATH)/bin/govulncheck" -json ./... > /tmp/govulncheck_backend.json 2> /tmp/govulncheck_backend.err
+          rc=$?
+          set -e
+          if [ ! -s /tmp/govulncheck_backend.json ]; then
+            cat /tmp/govulncheck_backend.err >&2
+            echo "::error::govulncheck 未产生输出 (rc=$rc)，拒绝判绿"
+            exit 1
+          fi
+          set +e
+          python3 ../scripts/vuln_gate.py --mode go --baseline ../docs/vuln_baseline_go.txt < /tmp/govulncheck_backend.json
+          gate_rc=$?
+          set -e
+          if [ "$gate_rc" -ne 0 ]; then exit "$gate_rc"; fi
+          if [ "$rc" -ne 0 ] && [ "$rc" -ne 3 ]; then
+            echo "::error::govulncheck 异常退出码 rc=$rc（gate 通过也不放行）"
+            exit "$rc"
+          fi
         working-directory: server
       - name: SBOM 交叉核对门禁 I 类（清单 ↔ 权威树，纪律 7.1；2026-09-22 起常驻）
         # 存在理由：177/178 两轮交付清单的 npm 段系手写且与 package.json 失真（幽灵包/区间矛盾/漏列），
@@ -253,10 +272,29 @@ jobs:
         working-directory: web
       - name: npm audit (baseline diff, 纪律 3.2)
         # 必须走官方源——npmmirror 未实现 audit 端点；基线只拦新增（在案 vite/esbuild 挂账）。
-        # pipefail 防止 npm audit 失败但 python gate 正常退出造成假绿。
+        # 退出码裁决（2026-11-13）：npm audit 发现漏洞时退出码 1（含基线内漏洞），
+        # 不能因 pipefail 直接判死；先落盘扫描 JSON，由 vuln_gate 按基线裁决，
+        # gate 通过时仅放行 rc∈{0,1}，其余（网络/工具故障）仍然失败——不做假绿。
         run: |
           set -euo pipefail
-          npm audit --json --registry=https://registry.npmjs.org | python3 ../scripts/vuln_gate.py --mode npm --baseline ../docs/vuln_baseline_npm.txt
+          set +e
+          npm audit --json --registry=https://registry.npmjs.org > /tmp/npm_audit.json 2> /tmp/npm_audit.err
+          rc=$?
+          set -e
+          if [ ! -s /tmp/npm_audit.json ]; then
+            cat /tmp/npm_audit.err >&2
+            echo "::error::npm audit 未产生输出 (rc=$rc)，拒绝判绿"
+            exit 1
+          fi
+          set +e
+          python3 ../scripts/vuln_gate.py --mode npm --baseline ../docs/vuln_baseline_npm.txt < /tmp/npm_audit.json
+          gate_rc=$?
+          set -e
+          if [ "$gate_rc" -ne 0 ]; then exit "$gate_rc"; fi
+          if [ "$rc" -ne 0 ] && [ "$rc" -ne 1 ]; then
+            echo "::error::npm audit 异常退出码 rc=$rc（gate 通过也不放行）"
+            exit "$rc"
+          fi
         working-directory: web
       - name: restore server binary
         # 2026-10-09：与 backend job 的 cache 步骤成对（原 download-artifact）。
@@ -343,14 +381,33 @@ jobs:
       - name: govulncheck desktop (SBOM 增量单列基线，纪律 3.2/6.2)
         # PYTHONIOENCODING=utf-8：Windows runner 控制台默认 cp1252，vuln_gate 中文输出
         # 直接 UnicodeEncodeError 崩门禁（desktop 第二跑实锤；记忆坑④同款）
+        # 退出码裁决（2026-11-13）：govulncheck 发现漏洞时退出码 3（含基线内漏洞）；
+        # 自检必须用 desktop/go.mod（本步在仓库根执行，2026-11-13 实锤根目录无 go.mod）。
         env:
           PYTHONIOENCODING: utf-8
         run: |
           set -euo pipefail
           go version
-          test -s go.mod
+          test -s desktop/go.mod
           go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
-          cd desktop && "$(go env GOPATH)/bin/govulncheck" -json ./... | python ../scripts/vuln_gate.py --mode go --baseline ../docs/vuln_baseline_desktop_go.txt
+          set +e
+          cd desktop && "$(go env GOPATH)/bin/govulncheck" -json ./... > /tmp/govulncheck_desktop.json 2> /tmp/govulncheck_desktop.err
+          rc=$?
+          set -e
+          if [ ! -s /tmp/govulncheck_desktop.json ]; then
+            cat /tmp/govulncheck_desktop.err >&2
+            echo "::error::govulncheck 未产生输出 (rc=$rc)，拒绝判绿"
+            exit 1
+          fi
+          set +e
+          python ../scripts/vuln_gate.py --mode go --baseline ../docs/vuln_baseline_desktop_go.txt < /tmp/govulncheck_desktop.json
+          gate_rc=$?
+          set -e
+          if [ "$gate_rc" -ne 0 ]; then exit "$gate_rc"; fi
+          if [ "$rc" -ne 0 ] && [ "$rc" -ne 3 ]; then
+            echo "::error::govulncheck 异常退出码 rc=$rc（gate 通过也不放行）"
+            exit "$rc"
+          fi
       - name: desktop SBOM 清单 (wails 依赖树单列，不污染 NAS 基线 Go79/npm41)
         run: cd desktop && go list -m all > "$GITHUB_WORKSPACE/依赖清单-desktop.txt"
       - name: wails CLI 钉版（runtime 基线见 desktop/README.md）
