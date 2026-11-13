@@ -70,14 +70,14 @@ func Init(dbPath string, appVersion string) error {
 		return fmt.Errorf("failed to run upgrades: %w", err)
 	}
 
-	// 预热第二个连接（v20.8 审计优化）：NAS 冷启动时避免首次写操作等待连接建立
-	// 捕获当前连接句柄 db，避免后台 goroutine 与（测试中）后续重初始化竞争读取全局 DB。
-	go func() {
-		var n int
-		if err := db.QueryRow("SELECT COUNT(*) FROM sqlite_master").Scan(&n); err != nil {
-			logger.Error("db warmup query failed: %v", err) // v21.58 F-16：错误不再忽略
-		}
-	}()
+	// 预热第二个连接（v20.8 审计优化）：NAS 冷启动时避免首次写操作等待连接建立。
+	// 必须同步完成：若改成后台 goroutine，测试关闭库/清理临时目录时它仍可能
+	// 新建 WAL/SHM 文件（CI Linux race 的 TempDir "directory not empty" 根因）。
+	// 捕获当前连接句柄 db，避免与（测试中）后续重初始化竞争读取全局 DB。
+	var n int
+	if err := db.QueryRow("SELECT COUNT(*) FROM sqlite_master").Scan(&n); err != nil {
+		logger.Error("db warmup query failed: %v", err) // v21.58 F-16：错误不再忽略
+	}
 
 	return nil
 }
