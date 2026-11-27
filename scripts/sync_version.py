@@ -49,7 +49,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("version")
     parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--public-overlay", default=ROOT.parent.parent / "devwalk" / "public-overlay" / "fnpack" / "manifest")
+    parser.add_argument("--public-overlay", default=ROOT.parent / "mirror" / "public-overlay" / "fnpack" / "manifest")
     args = parser.parse_args()
 
     version = args.version.strip()
@@ -87,7 +87,7 @@ def main():
         print(f"  {'would update' if args.dry_run else 'updated'} wails.json: {wails_path}")
 
     # 交接包根 VERSION（本地存在才同步）。
-    base_root = ROOT.parent.parent
+    base_root = ROOT.parent
     handover_version = base_root / "VERSION"
     if handover_version.is_file() and handover_version.read_text(encoding="utf-8") != version + "\n":
         changes.append((handover_version, version + "\n"))
@@ -104,7 +104,7 @@ def main():
 
     if not args.dry_run:
         for path, content in changes:
-            write(path, content)
+            write(path, content, args.dry_run)
         # JSON 重新解析校验，防止写坏 wails.json。
         parsed = json.loads(wails_path.read_text(encoding="utf-8-sig"))
         if parsed["info"]["productVersion"] != version:

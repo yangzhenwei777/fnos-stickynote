@@ -73,7 +73,7 @@ def check_version_metadata(problems):
         add_problem(problems, "wails.json", f"missing {wails_path}")
 
     # 交接包根 VERSION（可选）：本地常有，但公共仓/CI checkout 没有。
-    base_root = ROOT.parent.parent
+    base_root = ROOT.parent
     base_version_path = base_root / "VERSION"
     if base_version_path.is_file():
         base_version = base_version_path.read_text(encoding="utf-8").strip()

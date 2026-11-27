@@ -12,7 +12,7 @@
   "info": {
     "companyName": "Sticky note",
     "productName": "Sticky note Desktop",
-    "productVersion": "2.6.6",
+    "productVersion": "2.6.7",
     "copyright": "Copyright 2026 Davy",
     "comments": "Windows 本地优先客户端：本地 SQLite、增量同步、冲突处置与便携备份"
   }

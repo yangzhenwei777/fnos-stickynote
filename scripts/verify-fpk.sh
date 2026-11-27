@@ -12,7 +12,7 @@ ok()   { echo "  ✅ $1"; }
 # 会让 JSON 校验误报「JSON 非法」。优先 VENV_PY / 项目 venv，最后才退回 PATH。
 SCRIPT_DIR=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
 SRC_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
-REPO_ROOT=$(cd "$SRC_ROOT/../.." && pwd)
+REPO_ROOT=$(cd "$SRC_ROOT/.." && pwd)
 py_ok() { [ -n "$1" ] && "$1" -c "pass" >/dev/null 2>&1; }
 PY=""
 for cand in "${VENV_PY:-}" "$REPO_ROOT/envs/default/Scripts/python.exe" "python" "python3"; do

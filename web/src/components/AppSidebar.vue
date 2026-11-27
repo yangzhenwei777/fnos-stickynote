@@ -108,6 +108,11 @@
             <Document />
           </el-icon>
           <span class="sb-folder-name">我的笔记</span>
+          <span
+            v-if="isDefaultFolderHinted()"
+            class="sb-folder-dot"
+            aria-hidden="true"
+          />
         </div>
         <div
           v-for="(f, i) in customFolders"
@@ -186,6 +191,11 @@
               </el-dropdown-menu>
             </template>
           </el-dropdown>
+          <span
+            v-if="isFolderHinted(f.id)"
+            class="sb-folder-dot"
+            aria-hidden="true"
+          />
         </div>
       </div>
 
@@ -341,6 +351,17 @@ const user = computed(() => auth.user)
 const customFolders = computed(() => folderStore.customFolders)
 const activeFolderId = computed(() => folderStore.activeFolderId)
 const isNotesRoute = computed(() => route.path === '/')
+
+// 2.6.7：仅在「全部笔记」视图、且当前有选中笔记时，在其所属文件夹行右侧显示蓝点。
+// noteFolderHint 取值 'default' | number | null（由 useNotesView 写入）。
+const noteFolderHint = computed(() => folderStore.noteFolderHint)
+const showFolderDot = computed(() => isNotesRoute.value && activeFolderId.value === 'all')
+function isDefaultFolderHinted() {
+  return showFolderDot.value && noteFolderHint.value === 'default'
+}
+function isFolderHinted(folderId) {
+  return showFolderDot.value && noteFolderHint.value === folderId
+}
 
 // ---- 收起/展开 + 宽度（localStorage 持久化）----
 const collapsed = ref(localStorage.getItem('app_sidebar_collapsed') === '1')
@@ -671,6 +692,16 @@ onMounted(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 13px;
+}
+
+/* 2.6.7：全部笔记视图选中笔记所属文件夹的蓝点（与笔记列表 .note-item-dot 同款：6px 主题蓝圆点） */
+.sb-folder-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--primary-color);
+  flex-shrink: 0;
+  margin-left: 4px;
 }
 
 .sb-more-btn {

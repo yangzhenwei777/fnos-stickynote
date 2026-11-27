@@ -1,5 +1,5 @@
 appname               = stickynote
-version               = 2.6.6
+version               = 2.6.7
 display_name          = Sticky note
 platform              = x86
 # checksum 字段由 fnpack build 自动计算注入，请勿手动填写
@@ -11,6 +11,7 @@ desktop_uidir         = ui
 desktop_applaunchname = stickynote.Application
 desc                  = Sticky note 便签应用
 changelog             = """
+2.6.7 — 全部笔记视图选中笔记时，左侧文件夹列表显示归属蓝点：选中笔记（预览/编辑）时其所属文件夹行右侧显示蓝色小圆点，切换跟随、取消消失；默认「我的笔记」与自定义文件夹均适用；仅「全部笔记」视图生效。纯前端改动，零 schema、零后端/API、零新增依赖。
 2.6.6 — 安全升级、保存一致性、Outbox 原子化与大载荷边界修复：Go 1.26.11；自动保存防旧响应覆盖新输入；本地业务写与 Outbox 同事务；100MB 正文边界修复；logger 并发生命周期修复；前端与发布门禁加固。零 schema 变更。
 2.6.5 — 移动端系统配置 CORS 值横向溢出修复：长 URL 串在卡片内自动折行，不再撑出横向滚动。仅前端样式改动，零 schema、零新增依赖。
 2.6.4 — 滚动条与移动端体验优化 + 历史配置上卡片：PC 三容器滚动条淡显 3 秒隐；移动端隐藏全部滚动条；列表页页边距/顶距修复；个人中心假滚动修复；应用图标；系统配置页历史三卡片；全部配置项隐藏内部旗标。零 schema、零新增依赖。

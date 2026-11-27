@@ -4,6 +4,21 @@
 
 - License: relicensed from MIT to AGPL-3.0-or-later. Releases up to and including v2.6.3 remain available under the MIT License.
 
+## 2.6.7
+
+- All-notes view: selecting a note (preview/edit) now shows a small blue dot next to the folder that owns it in the left folder list, so the note's folder is identifiable at a glance.
+- The dot uses the same style as the selected-note dot in the note list; it follows selection changes and disappears when no note is selected. Applies to the default "My Notes" folder and custom folders, and only in the All Notes view.
+- Pure front-end change: no schema, API, backend or dependency changes.
+
+## 2.6.6
+
+- Autosave: saves now run through a serial queue keyed by an edit revision, so a stale save response can no longer overwrite newer input; pending saves are flushed before switching notes.
+- Sync integrity: local business writes (note and folder mutations, restore, reorder, batch delete, trash purge) commit together with the desktop Outbox in a single transaction; sync cursor, state parsing and JSON serialization errors now fail closed instead of being ignored.
+- Toolchain: Go 1.26.11 across server, desktop, CI and Docker images (GO-2026-6859).
+- Large payloads: the default HTTP body limit is raised to 120 MB so 100 MB notes fit with JSON overhead; the business (100 MB) and transport (128 MB) caps are unchanged.
+- Engineering: logger Init/Close lifecycle serialized (fixes handle leaks and Windows log-file delete failures); shared cross-boundary error contract fixture; Stylelint added to lint; desktop disables the Service Worker; web PWA precache slimmed; the editor is split into async chunks; `minimatch`/`glob` pinned via overrides.
+- No schema changes. Only build-tooling devDependencies (Stylelint/postcss-html) and two transitive security override pins were added; runtime dependencies unchanged.
+
 ## 2.6.5
 
 - Mobile System Config → All Configs: long unbroken values such as the CORS allowlist now wrap inside the card instead of causing horizontal scrolling.

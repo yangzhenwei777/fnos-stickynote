@@ -18,6 +18,7 @@ import { extractNoteOutline, shouldBlockOutlineWheel } from '@/composables/useNo
 import { useFolderStore } from '@/stores/folder'
 import { useFolderSecurityStore } from '@/stores/folderSecurity'
 import { stripHtml, toggleTaskItemInHtml } from '@/utils/note'
+import { resolveNoteFolderHint } from '@/utils/noteFolderHint'
 import { message } from '@/utils/message'
 // v21.220：代码块复制按钮（预览态挂载；编辑态由 TiptapEditor 内 CodeBlockCopy 扩展负责）
 import { attachCodeCopyButtons } from '@/components/editor/codeBlockCopy'
@@ -563,6 +564,8 @@ onUnmounted(() => {
   if (stopAutoContrast) { stopAutoContrast(); stopAutoContrast = null }
   if (stopSyncRefresh) { stopSyncRefresh(); stopSyncRefresh = null }
   if (outlineScrollTimer) { clearTimeout(outlineScrollTimer); outlineScrollTimer = null }
+  // 2.6.7：离开笔记页时清除文件夹蓝点提示，避免残留在左侧列表
+  folderStore.setNoteFolderHint(null)
   cleanupTimers()
 })
 
@@ -623,6 +626,12 @@ watch(saveConflict, (v) => {
     }
   }).catch(() => { /* 继续编辑：自动保存已暂停，Ctrl+S 可再次尝试并重新弹出处理对话框 */ })
 })
+
+// 2.6.7：全部笔记视图选中笔记 → 把其归属文件夹写入 folderStore，供左侧文件夹列表显示蓝点。
+// 仅 UI 提示，不改数据；取消选中（currentNote 置空）时写入 null 使蓝点消失。
+watch(currentNote, (note) => {
+  folderStore.setNoteFolderHint(resolveNoteFolderHint(note))
+}, { immediate: true })
 
 // v21.86：切换文件夹 → 按当前文件夹重新拉取笔记列表（搜索词与标签条件保留）
 watch(() => folderStore.activeFolderId, async () => {

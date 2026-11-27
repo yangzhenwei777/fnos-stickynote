@@ -195,3 +195,23 @@ describe('v2.3.0 文件夹访问锁', () => {
     expect(sessionStorage.getItem('sn_folder_grants')).toBeNull()
   })
 })
+
+describe('noteFolderHint（2.6.7 全部笔记选中笔记归属提示）', () => {
+  it('初始为 null（无选中笔记不显示蓝点）', () => {
+    const s = useFolderStore()
+    expect(s.noteFolderHint).toBeNull()
+  })
+
+  it('setNoteFolderHint：可设为 default / 数字，置 null/undefined 时清除', () => {
+    const s = useFolderStore()
+    s.setNoteFolderHint('default')
+    expect(s.noteFolderHint).toBe('default')
+    s.setNoteFolderHint(10)
+    expect(s.noteFolderHint).toBe(10)
+    s.setNoteFolderHint(null)
+    expect(s.noteFolderHint).toBeNull()
+    s.setNoteFolderHint(12)
+    s.setNoteFolderHint(undefined)
+    expect(s.noteFolderHint).toBeNull()
+  })
+})

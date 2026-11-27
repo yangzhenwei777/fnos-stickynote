@@ -25,6 +25,9 @@ export const useFolderStore = defineStore('folder', () => {
   const notesRefreshTick = ref(0)
   // 锁定事件：{ folderId, tick }，NotesView 据此关闭正在查看的笔记
   const lockSignal = ref(null)
+  // 2.6.7：当前选中笔记的归属文件夹提示（'default' | number | null）。
+  // 由 useNotesView 在选中/取消笔记时写入，AppSidebar 据此在对应文件夹行显示蓝点。
+  const noteFolderHint = ref(null)
 
   const defaultFolder = computed(() => folders.value.find(f => f.is_default) || null)
   const customFolders = computed(() => folders.value.filter(f => !f.is_default))
@@ -193,6 +196,11 @@ export const useFolderStore = defineStore('folder', () => {
     return data
   }
 
+  // 2.6.7：写入/清除「选中笔记归属文件夹」提示（null = 无选中笔记）
+  function setNoteFolderHint(value) {
+    noteFolderHint.value = value ?? null
+  }
+
   function selectFolder(key) {
     activeFolderId.value = key
   }
@@ -207,10 +215,10 @@ export const useFolderStore = defineStore('folder', () => {
   return {
     folders, activeFolderId, activeFolder, listParam, loaded, homeTick,
     defaultFolder, customFolders,
-    unlockedFolderIds, notesRefreshTick, lockSignal,
+    unlockedFolderIds, notesRefreshTick, lockSignal, noteFolderHint,
     isFolderLocked, restoreUnlocks, clearFolderUnlocks,
     loadFolders, createNewFolder, renameFolderById, moveFolderTo, removeFolder,
     encryptFolderById, decryptFolderById, unlockFolderById,
-    bumpNotesRefresh, selectFolder, goHomeTick
+    bumpNotesRefresh, selectFolder, goHomeTick, setNoteFolderHint
   }
 })

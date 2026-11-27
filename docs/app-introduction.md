@@ -1,6 +1,6 @@
 # Sticky note（便签）— 应用介绍
 
-当前版本：**2.6.3**（最新版本以 [Releases](https://github.com/yangzhenwei777/fnos-stickynote/releases) 为准）
+当前版本：见 [Releases](https://github.com/yangzhenwei777/fnos-stickynote/releases)（本文件不内联版本号，防口径漂移）
 
 ## 概述
 
